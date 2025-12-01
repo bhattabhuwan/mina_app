@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 
-class SymptomsCheckerUI extends StatefulWidget {
-  const SymptomsCheckerUI({super.key});
+class SymptomsCheckerPage extends StatefulWidget {
+  const SymptomsCheckerPage({super.key});
 
   @override
-  State<SymptomsCheckerUI> createState() => _SymptomsCheckerUIState();
+  State<SymptomsCheckerPage> createState() => _SymptomsCheckerPageState();
 }
 
-class _SymptomsCheckerUIState extends State<SymptomsCheckerUI> {
+class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = []; // {'text': '', 'isUser': bool}
 

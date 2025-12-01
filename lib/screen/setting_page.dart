@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:mina_app/theme/theme_manager.dart';
+import 'package:provider/provider.dart';
+
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -9,35 +12,38 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   bool notificationsEnabled = true;
-  bool darkModeEnabled = false;
 
   @override
   Widget build(BuildContext context) {
+    final themeManager = Provider.of<ThemeManager>(context);
+
     return Scaffold(
-      backgroundColor: Colors.blue.shade50,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Settings'),
-        backgroundColor: Colors.lightBlue.shade700,
+        backgroundColor: Theme.of(context).appBarTheme.backgroundColor,
         elevation: 2,
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          // --------------------
           // Profile Card
-          // --------------------
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                colors: [Colors.lightBlue.shade400, Colors.lightBlue.shade700],
+                colors: themeManager.isDarkMode
+                    ? [Colors.grey.shade900, Colors.grey.shade800]
+                    : [Colors.lightBlue.shade400, Colors.lightBlue.shade700],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(25),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.blue.shade200.withOpacity(0.5),
+                  color: themeManager.isDarkMode
+                      ? Colors.black26
+                      : Colors.blue.shade200.withOpacity(0.5),
                   blurRadius: 12,
                   offset: const Offset(0, 6),
                 ),
@@ -47,33 +53,33 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 const CircleAvatar(
                   radius: 40,
-                  backgroundImage: AssetImage('lib/images/profile.jpg'),
+                  backgroundImage: AssetImage('lib/images/profile.jpeg'),
                 ),
                 const SizedBox(width: 20),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                      Text(
                         'John Doe',
                         style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white),
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: themeManager.isDarkMode ? Colors.white : Colors.white,
+                        ),
                       ),
                       const SizedBox(height: 5),
-                      const Text(
+                      Text(
                         'john.doe@example.com',
-                        style: TextStyle(color: Colors.white70),
+                        style: TextStyle(
+                          color: themeManager.isDarkMode ? Colors.white70 : Colors.white70,
+                        ),
                       ),
                       const SizedBox(height: 10),
                       GestureDetector(
-                        onTap: () {
-                          // Add edit profile functionality
-                        },
+                        onTap: () {},
                         child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 6, horizontal: 14),
+                          padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 14),
                           decoration: BoxDecoration(
                             color: Colors.white.withOpacity(0.2),
                             borderRadius: BorderRadius.circular(20),
@@ -93,9 +99,6 @@ class _SettingsPageState extends State<SettingsPage> {
 
           const SizedBox(height: 30),
 
-          // --------------------
-          // App Settings Section
-          // --------------------
           const Text(
             'App Settings',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
@@ -112,8 +115,8 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildSwitchTile(
             title: 'Dark Mode',
             icon: Icons.dark_mode,
-            value: darkModeEnabled,
-            onChanged: (value) => setState(() => darkModeEnabled = value),
+            value: themeManager.isDarkMode,
+            onChanged: (value) => themeManager.toggleTheme(value),
             activeColor: Colors.indigo.shade700,
           ),
 
@@ -122,26 +125,19 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildCardTile(
             icon: Icons.lock,
             title: 'Privacy & Security',
-            onTap: () {
-              // Add Privacy settings functionality
-            },
+            onTap: () {},
           ),
           _buildCardTile(
             icon: Icons.help_outline,
             title: 'Help & Support',
-            onTap: () {
-              // Add help functionality
-            },
+            onTap: () {},
           ),
 
           const SizedBox(height: 30),
 
-          // --------------------
-          // Logout Button
-          // --------------------
           ElevatedButton.icon(
-            icon: const Icon(color:Colors.white,Icons.logout),
-            label: const Text('Logout', style: TextStyle( color: Colors.white, fontSize: 16)),
+            icon: const Icon(color: Colors.white, Icons.logout),
+            label: const Text('Logout', style: TextStyle(color: Colors.white, fontSize: 16)),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color.fromARGB(255, 206, 11, 11),
               padding: const EdgeInsets.symmetric(vertical: 14),
@@ -151,18 +147,13 @@ class _SettingsPageState extends State<SettingsPage> {
               elevation: 4,
               shadowColor: const Color.fromARGB(255, 219, 2, 2).withOpacity(0.5),
             ),
-            onPressed: () {
-              // Add logout functionality
-            },
+            onPressed: () {},
           ),
         ],
       ),
     );
   }
 
-  // --------------------
-  // Helper Widgets
-  // --------------------
   Widget _buildSwitchTile({
     required String title,
     required IconData icon,

@@ -8,19 +8,19 @@ class ConsultPage extends StatelessWidget {
       'name': 'Dr. John Smith',
       'specialty': 'Cardiologist',
       'rating': 4.8,
-      'image': 'lib/images/profile.jpg'
+      'image': 'lib/images/profile.jpeg'
     },
     {
       'name': 'Dr. Amy Johnson',
       'specialty': 'Dermatologist',
       'rating': 4.6,
-      'image': 'lib/images/profile.jpg'
+      'image': 'lib/images/profile.jpeg'
     },
     {
       'name': 'Dr. Robert Lee',
       'specialty': 'Neurologist',
       'rating': 4.7,
-      'image': 'lib/images/profile.jpg'
+      'image': 'lib/images/profile.jpeg'
     },
   ];
 

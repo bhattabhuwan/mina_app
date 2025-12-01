@@ -1,5 +1,8 @@
+// lib/screen/profile_page.dart
 import 'package:flutter/material.dart';
-import 'package:pedometer/pedometer.dart';
+import 'package:mina_app/helper/step_counter.dart';
+import 'package:mina_app/screen/setting_page.dart';
+
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -12,29 +15,9 @@ class _ProfilePageState extends State<ProfilePage> {
   int steps = 0;
   int appointments = 2;
   double healthScore = 87.5;
-  late Stream<StepCount> _stepCountStream;
-
-  @override
-  void initState() {
-    super.initState();
-    _initPedometer();
-  }
-
-  void _initPedometer() {
-    _stepCountStream = Pedometer.stepCountStream;
-    _stepCountStream.listen((StepCount event) {
-      setState(() {
-        steps = event.steps;
-      });
-    }).onError((error) {
-      print('Pedometer Error: $error');
-    });
-  }
 
   @override
   Widget build(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-
     return Scaffold(
       backgroundColor: Colors.blue.shade50,
       body: SingleChildScrollView(
@@ -47,8 +30,6 @@ class _ProfilePageState extends State<ProfilePage> {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Colors.lightBlue.shade400, Colors.lightBlue.shade700],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
                 ),
                 borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(35),
@@ -79,9 +60,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       const SizedBox(height: 15),
                       ElevatedButton.icon(
-                        onPressed: () {
-                          // Edit profile functionality
-                        },
+                        onPressed: () {},
                         icon: const Icon(Icons.edit, size: 18),
                         label: const Text('Edit Profile'),
                         style: ElevatedButton.styleFrom(
@@ -95,7 +74,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                   CircleAvatar(
                     radius: 45,
-                    backgroundImage: const AssetImage('lib/images/profile.jpg'),
+                    backgroundImage: const AssetImage('lib/images/profile.jpeg'),
                     backgroundColor: Colors.white,
                   ),
                 ],
@@ -109,12 +88,19 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  _buildStatCard('Steps', steps.toString(), Icons.directions_walk, Colors.orange),
-                  _buildStatCard('Appointments', appointments.toString(), Icons.calendar_today, Colors.green),
-                  _buildStatCard('Health Score', healthScore.toStringAsFixed(1), Icons.favorite, Colors.redAccent),
+                  _buildStatCard('Steps', Colors.orange, child: StepCounter(
+                    onStepChanged: (value) {
+                      setState(() {
+                        steps = value;
+                      });
+                    },
+                  )),
+                  _buildStatCard('Appointments', Colors.green, value: appointments.toString()),
+                  _buildStatCard('Health Score', Colors.redAccent, value: healthScore.toStringAsFixed(1)),
                 ],
               ),
             ),
+
             const SizedBox(height: 30),
 
             // Action Cards
@@ -123,16 +109,15 @@ class _ProfilePageState extends State<ProfilePage> {
               child: Column(
                 children: [
                   _buildActionCard(Icons.settings, 'Settings', Colors.lightBlue, () {
-                    // Navigate to Settings
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => const SettingsPage()),
+                    );
                   }),
                   const SizedBox(height: 15),
-                  _buildActionCard(Icons.history, 'Activity History', Colors.purple, () {
-                    // Navigate to Activity History
-                  }),
+                  _buildActionCard(Icons.history, 'Activity History', Colors.purple, () {}),
                   const SizedBox(height: 15),
-                  _buildActionCard(Icons.logout, 'Logout', Colors.redAccent, () {
-                    // Logout functionality
-                  }),
+                  _buildActionCard(Icons.logout, 'Logout', Colors.redAccent, () {}),
                 ],
               ),
             ),
@@ -143,7 +128,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
+  Widget _buildStatCard(String title, Color color, {String? value, Widget? child}) {
     return Container(
       width: 100,
       padding: const EdgeInsets.all(15),
@@ -156,9 +141,9 @@ class _ProfilePageState extends State<ProfilePage> {
       ),
       child: Column(
         children: [
-          CircleAvatar(radius: 20, backgroundColor: color.withOpacity(0.2), child: Icon(icon, color: color)),
+          CircleAvatar(radius: 20, backgroundColor: color.withOpacity(0.2), child: const Icon(Icons.directions_walk, color: Colors.orange)),
           const SizedBox(height: 10),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          child ?? Text(value ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
           const SizedBox(height: 5),
           Text(title, style: const TextStyle(color: Colors.grey, fontSize: 12)),
         ],
