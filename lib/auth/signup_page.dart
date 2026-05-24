@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
-import 'signin_page.dart';
+import 'package:mina_app/auth/ApiService.dart';
+import 'signin_page.dart'; // adjust import if needed
 
 class SignUpUI extends StatefulWidget {
   final VoidCallback showSignInPage;
 
-  const SignUpUI({
-    super.key,
-    required this.showSignInPage,
-  });
+  const SignUpUI({super.key, required this.showSignInPage});
 
   @override
   State<SignUpUI> createState() => _SignUpUIState();
@@ -19,184 +17,189 @@ class _SignUpUIState extends State<SignUpUI> {
   final phoneController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmPassController = TextEditingController();
+  final fullNameController = TextEditingController();
+  final genderController = TextEditingController();
+  final dobController = TextEditingController();
+  final addressController = TextEditingController();
+  final emergencyContactController = TextEditingController();
+
+  bool _loading = false;
+
+  void register() async {
+    if (passwordController.text != confirmPassController.text) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("Passwords do not match")));
+      return;
+    }
+
+    setState(() {
+      _loading = true;
+    });
+
+    try {
+      final api = ApiService();
+      await api.registerUser(
+        email: emailController.text.trim(),
+        username: usernameController.text.trim(),
+        fullName: fullNameController.text.trim(),
+        phone: phoneController.text.trim(),
+        gender: genderController.text.trim(),
+        role: "patient",
+        password: passwordController.text.trim(),
+        dateOfBirth: DateTime.parse(dobController.text.trim()),
+        address: addressController.text.trim(),
+        emergencyContact: emergencyContactController.text.trim(),
+        medicalConditions: [],
+        allergies: [],
+        currentMedications: [],
+      );
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text("Registered successfully!")));
+      widget.showSignInPage();
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text("Registration failed: $e")));
+    } finally {
+      setState(() {
+        _loading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: Colors.blue.shade50,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-          child: Container(
-            padding: const EdgeInsets.all(28),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(30),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.withOpacity(0.15),
-                  blurRadius: 25,
-                  offset: const Offset(0, 8),
-                )
-              ],
-            ),
+      backgroundColor: const Color(0xFF5C5FFF), // Same as SignInUI
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const BlinkingLogo(),
+                // Logo (same as SignInUI)
+                Image.asset(
+                  'lib/images/logo.png',
+                  height: 150,
+                  width: 150,
+                ),
                 const SizedBox(height: 20),
 
-                Text(
-                  'Create Account',
+                // App name
+                const Text(
+                  'MINA',
                   style: TextStyle(
-                    fontSize: 30,
+                    fontSize: 36,
                     fontWeight: FontWeight.bold,
-                    color: Colors.lightBlue.shade700,
+                    color: Colors.white,
                   ),
                 ),
-                const SizedBox(height: 25),
+                const Text(
+                  'HEALTH APP',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+                const SizedBox(height: 30),
+
+                // Full Name
+                MyTextfield(controller: fullNameController, hintText: "Full Name", obscuretext: false),
+                const SizedBox(height: 16),
 
                 // Username
-                MyTextfield(
-                  controller: usernameController,
-                  hintText: "Username",
-                  obscuretext: false,
-                ),
+                MyTextfield(controller: usernameController, hintText: "Username", obscuretext: false),
                 const SizedBox(height: 16),
 
                 // Email
-                MyTextfield(
-                  controller: emailController,
-                  hintText: "Email",
-                  obscuretext: false,
-                ),
+                MyTextfield(controller: emailController, hintText: "Email", obscuretext: false),
                 const SizedBox(height: 16),
 
-                // Phone Number
-                MyTextfield(
-                  controller: phoneController,
-                  hintText: "Phone Number",
-                  obscuretext: false,
-                ),
+                // Phone
+                MyTextfield(controller: phoneController, hintText: "Phone Number", obscuretext: false),
                 const SizedBox(height: 16),
 
-                // Password with show/hide
-                PasswordTextField(
-                  controller: passwordController,
-                  hintText: "Password",
-                ),
+                // Gender
+                MyTextfield(controller: genderController, hintText: "Gender", obscuretext: false),
                 const SizedBox(height: 16),
 
-                // Confirm Password with show/hide
-                ConfirmPasswordTextField(
-                  controller: confirmPassController,
-                  hintText: "Confirm Password",
-                ),
+                // Date of Birth
+                MyTextfield(controller: dobController, hintText: "Date of Birth (YYYY-MM-DD)", obscuretext: false),
+                const SizedBox(height: 16),
 
+                // Address
+                MyTextfield(controller: addressController, hintText: "Address", obscuretext: false),
+                const SizedBox(height: 16),
+
+                // Emergency Contact
+                MyTextfield(controller: emergencyContactController, hintText: "Emergency Contact", obscuretext: false),
+                const SizedBox(height: 16),
+
+                // Password
+                PasswordTextField(controller: passwordController, hintText: "Password"),
+                const SizedBox(height: 16),
+
+                // Confirm Password
+                ConfirmPasswordTextField(controller: confirmPassController, hintText: "Confirm Password"),
                 const SizedBox(height: 20),
 
+                // Sign Up Button
                 SizedBox(
                   height: 50,
-                  width: width * 0.8,
+                  width: width * 0.9,
                   child: ElevatedButton(
-                    onPressed: () {},
+                    onPressed: _loading ? null : register,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.lightBlue,
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF5C5FFF),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(30),
                       ),
-                      elevation: 3,
                     ),
-                    child: const Text(
-                      "Sign Up",
-                      style: TextStyle(
-                        fontSize: 17,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(height: 25),
-
-                Row(
-                  children: [
-                    Expanded(child: Divider(color: Colors.grey.shade300)),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 12),
-                      child: Text("OR", style: TextStyle(color: Colors.grey)),
-                    ),
-                    Expanded(child: Divider(color: Colors.grey.shade300)),
-                  ],
-                ),
-                const SizedBox(height: 25),
-
-                GestureDetector(
-                  onTap: () {},
-                  child: Container(
-                    height: 50,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.lightBlue.shade300,
-                          Colors.lightBlue.shade600
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.blue.withOpacity(0.2),
-                          blurRadius: 12,
-                          offset: const Offset(0, 5),
-                        )
-                      ],
-                    ),
-                    child: Center(
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Image.asset('lib/images/google.png',
-                              height: 24, width: 24),
-                          const SizedBox(width: 12),
-                          const Text(
-                            'Continue with Google',
+                    child: _loading
+                        ? const CircularProgressIndicator(color: Color(0xFF5C5FFF))
+                        : const Text(
+                            "Sign Up",
                             style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                        ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // OR separator
+                const Text(
+                  "or",
+                  style: TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 20),
+
+                // Already have an account? -> Sign In button
+                SizedBox(
+                  height: 50,
+                  width: width * 0.9,
+                  child: OutlinedButton(
+                    onPressed: widget.showSignInPage,
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: Colors.white),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                    ),
+                    child: const Text(
+                      "Already have an account? Sign In",
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 25),
-
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      'Already have an account?',
-                      style: TextStyle(color: Colors.grey.shade600),
-                    ),
-                    const SizedBox(width: 5),
-                    GestureDetector(
-                      onTap: widget.showSignInPage,
-                      child: const Text(
-                        'Sign In',
-                        style: TextStyle(
-                          color: Color.fromARGB(255, 2, 179, 8),
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
                 ),
               ],
             ),
@@ -207,9 +210,40 @@ class _SignUpUIState extends State<SignUpUI> {
   }
 }
 
-// --------------------
-// PASSWORD TEXTFIELD
-// --------------------
+// ---------- Reusable TextField (same as SignInUI) ----------
+class MyTextfield extends StatelessWidget {
+  final TextEditingController controller;
+  final String hintText;
+  final bool obscuretext;
+
+  const MyTextfield({
+    super.key,
+    required this.controller,
+    required this.hintText,
+    required this.obscuretext,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      obscureText: obscuretext,
+      style: const TextStyle(color: Colors.black),
+      decoration: InputDecoration(
+        hintText: hintText,
+        filled: true,
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
+        ),
+      ),
+    );
+  }
+}
+
+// ---------- Password TextField (same as SignInUI) ----------
 class PasswordTextField extends StatefulWidget {
   final TextEditingController controller;
   final String hintText;
@@ -232,16 +266,16 @@ class _PasswordTextFieldState extends State<PasswordTextField> {
     return TextField(
       controller: widget.controller,
       obscureText: _isObscure,
+      style: const TextStyle(color: Colors.black),
       decoration: InputDecoration(
         hintText: widget.hintText,
         filled: true,
-        fillColor: Colors.blue.shade50,
-        contentPadding:
-            const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         suffixIcon: IconButton(
           icon: Icon(
             _isObscure ? Icons.visibility_off : Icons.visibility,
-            color: Colors.lightBlue.shade600,
+            color: Colors.grey,
           ),
           onPressed: () {
             setState(() {
@@ -250,28 +284,15 @@ class _PasswordTextFieldState extends State<PasswordTextField> {
           },
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: Colors.lightBlue.shade200, width: 1.2),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: Colors.lightBlue.shade200, width: 1.2),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: Colors.lightBlue.shade600, width: 1.8),
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
         ),
       ),
     );
   }
 }
 
-// -----------------------------
-// CONFIRM PASSWORD TEXTFIELD
-// -----------------------------
+// ---------- Confirm Password TextField (style matched to SignInUI) ----------
 class ConfirmPasswordTextField extends StatefulWidget {
   final TextEditingController controller;
   final String hintText;
@@ -283,8 +304,7 @@ class ConfirmPasswordTextField extends StatefulWidget {
   });
 
   @override
-  State<ConfirmPasswordTextField> createState() =>
-      _ConfirmPasswordTextFieldState();
+  State<ConfirmPasswordTextField> createState() => _ConfirmPasswordTextFieldState();
 }
 
 class _ConfirmPasswordTextFieldState extends State<ConfirmPasswordTextField> {
@@ -295,16 +315,16 @@ class _ConfirmPasswordTextFieldState extends State<ConfirmPasswordTextField> {
     return TextField(
       controller: widget.controller,
       obscureText: _isObscure,
+      style: const TextStyle(color: Colors.black),
       decoration: InputDecoration(
         hintText: widget.hintText,
         filled: true,
-        fillColor: Colors.blue.shade50,
-        contentPadding:
-            const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+        fillColor: Colors.white,
+        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
         suffixIcon: IconButton(
           icon: Icon(
             _isObscure ? Icons.visibility_off : Icons.visibility,
-            color: Colors.lightBlue.shade600,
+            color: Colors.grey,
           ),
           onPressed: () {
             setState(() {
@@ -313,19 +333,8 @@ class _ConfirmPasswordTextFieldState extends State<ConfirmPasswordTextField> {
           },
         ),
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: Colors.lightBlue.shade200, width: 1.2),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: Colors.lightBlue.shade200, width: 1.2),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide:
-              BorderSide(color: Colors.lightBlue.shade600, width: 1.8),
+          borderRadius: BorderRadius.circular(30),
+          borderSide: BorderSide.none,
         ),
       ),
     );

@@ -167,7 +167,7 @@ class _SettingsPageState extends State<SettingsPage> {
       child: SwitchListTile(
         value: value,
         onChanged: onChanged,
-        activeColor: activeColor,
+        activeThumbColor: activeColor,
         title: Text(title),
         secondary: Icon(icon, color: activeColor),
       ),

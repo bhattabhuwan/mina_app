@@ -1,4 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:mina_app/theme/theme_manager.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:file_picker/file_picker.dart';
 
 class SymptomsCheckerPage extends StatefulWidget {
   const SymptomsCheckerPage({super.key});
@@ -9,166 +16,290 @@ class SymptomsCheckerPage extends StatefulWidget {
 
 class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
   final TextEditingController _controller = TextEditingController();
-  final List<Map<String, dynamic>> _messages = []; // {'text': '', 'isUser': bool}
+  final List<Map<String, dynamic>> _messages = [];
 
-  void _sendMessage() {
-    if (_controller.text.trim().isEmpty) return;
+  bool _loading = false;
+  bool _loadingSymptoms = false;
 
-    setState(() {
-      // User message
-      _messages.add({'text': _controller.text.trim(), 'isUser': true});
-      // Simulated AI response
-      _messages.add({
-        'text': "Analyzing symptoms for '${_controller.text.trim()}'...",
-        'isUser': false
-      });
-      _controller.clear();
+  List<String> _availableSymptoms = [];
+
+  final String baseUrl = "https://mina-backend-1.onrender.com";
+
+  // ---------------- HEADERS ----------------
+  Future<Map<String, String>> _getHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+
+    return {
+      "Content-Type": "application/json",
+      if (token != null && token.isNotEmpty)
+        "Authorization": "Bearer $token",
+    };
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSymptoms();
+    _addWelcome();
+  }
+
+  void _addWelcome() {
+    _messages.add({
+      "text": "👋 Welcome\nSelect or type symptoms to analyze.",
+      "isUser": false,
     });
+  }
+
+  // ---------------- ADD MESSAGE ----------------
+  void _addMessage(String text, bool isUser) {
+    setState(() {
+      _messages.add({"text": text, "isUser": isUser});
+    });
+  }
+
+  // ---------------- FETCH SYMPTOMS ----------------
+  Future<void> _fetchSymptoms() async {
+    setState(() => _loadingSymptoms = true);
+
+    try {
+      final res = await http.get(
+        Uri.parse("$baseUrl/api/v1/symptom-checker/symptoms"),
+        headers: await _getHeaders(),
+      );
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body);
+
+        setState(() {
+          _availableSymptoms = List<String>.from(data["symptoms"] ?? []);
+        });
+      }
+    } catch (e) {
+      _addMessage("❌ Failed to load symptoms", false);
+    }
+
+    setState(() => _loadingSymptoms = false);
+  }
+
+  // ---------------- ANALYZE SYMPTOMS ----------------
+  Future<void> _analyzeSymptoms(String symptom) async {
+    _addMessage(symptom, true);
+    setState(() => _loading = true);
+
+    try {
+      final res = await http.post(
+        Uri.parse("$baseUrl/api/v1/symptom-checker/analyze"),
+        headers: await _getHeaders(),
+        body: jsonEncode({
+          "symptoms": [symptom],
+          "age": 25,
+          "gender": "male",
+          "duration_days": 1,
+          "severity": 1,
+        }),
+      );
+
+      final data = jsonDecode(res.body);
+
+      String output = "🧠 AI Medical Analysis\n\n";
+
+      if (data["predictions"] != null) {
+        output += "📌 Possible Conditions:\n";
+
+        for (var p in data["predictions"]) {
+          final condition = p["condition"] ?? "Unknown";
+          final confidence = (p["confidence"] ?? 0).toDouble();
+          final severity = p["severity"] ?? "unknown";
+
+          output +=
+              "• $condition (${confidence.toStringAsFixed(1)}%) - $severity\n";
+
+          if (p["recommendations"] != null) {
+            output += "  💊 Recommendations:\n";
+            for (var r in p["recommendations"]) {
+              output += "    - $r\n";
+            }
+          }
+        }
+      }
+
+      output += "\n⚠️ ${data["disclaimer"] ?? "Not a medical diagnosis"}";
+
+      _addMessage(output, false);
+    } catch (e) {
+      _addMessage("❌ Analysis failed: $e", false);
+    }
+
+    setState(() => _loading = false);
+  }
+
+  // ---------------- FIXED DOCUMENT UPLOAD ----------------
+  Future<void> _uploadFile() async {
+    FilePickerResult? result =
+        await FilePicker.platform.pickFiles(type: FileType.any);
+
+    if (result == null) return;
+
+    final file = File(result.files.single.path!);
+    final fileName = result.files.single.name;
+
+    _addMessage("📎 Uploading $fileName...", true);
+    setState(() => _loading = true);
+
+    try {
+      final request = http.MultipartRequest(
+        "POST",
+        Uri.parse("$baseUrl/api/v1/documents/upload"),
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString("token");
+
+      request.headers.addAll({
+        if (token != null && token.isNotEmpty)
+          "Authorization": "Bearer $token",
+      });
+
+      // ✅ IMPORTANT: backend supports these fields
+      request.fields["folder"] = "medical_files";
+      request.fields["description"] = "Uploaded from Flutter app";
+
+      request.files.add(
+        await http.MultipartFile.fromPath("file", file.path),
+      );
+
+      final streamed = await request.send();
+      final response = await http.Response.fromStream(streamed);
+
+      final data = jsonDecode(response.body);
+
+      String output = "📄 Document Upload Result\n\n";
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        if (data is String) {
+          output += data;
+        } else if (data is Map) {
+          output += data["message"] ??
+              data["result"] ??
+              data["file_url"] ??
+              "Upload successful";
+
+          if (data["storage_type"] != null) {
+            output += "\n📦 Storage: ${data["storage_type"]}";
+          }
+        } else {
+          output += "Upload completed successfully";
+        }
+
+        output +=
+            "\n\n🧠 AI Note: Document uploaded successfully. If analysis is supported, results will appear in chat.";
+      } else {
+        output = "❌ Upload failed (${response.statusCode})";
+      }
+
+      _addMessage(output, false);
+    } catch (e) {
+      _addMessage("❌ Upload error: $e", false);
+    }
+
+    setState(() => _loading = false);
+  }
+
+  // ---------------- SEND ----------------
+  void _send() {
+    if (_controller.text.trim().isEmpty) return;
+    _analyzeSymptoms(_controller.text.trim());
+    _controller.clear();
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.blue.shade50,
-      appBar: AppBar(
-        title: const Text('Symptoms Checker'),
-        backgroundColor: Colors.lightBlue.shade700,
-        elevation: 0,
-      ),
-      body: Stack(
-        children: [
-          // Decorative background bubbles
-          Positioned(
-            top: -50,
-            left: -50,
-            child: _buildBackgroundCircle(200, Colors.lightBlue.shade200),
-          ),
-          Positioned(
-            bottom: -80,
-            right: -60,
-            child: _buildBackgroundCircle(250, Colors.lightBlue.shade100),
-          ),
-          Positioned(
-            top: 150,
-            right: -30,
-            child: _buildBackgroundCircle(100, Colors.lightBlue.shade100.withOpacity(0.5)),
-          ),
-          
-          Column(
-            children: [
-              // Messages List
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                  itemCount: _messages.length,
-                  itemBuilder: (context, index) {
-                    final msg = _messages[index];
-                    return Align(
-                      alignment:
-                          msg['isUser'] ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        constraints: BoxConstraints(
-                          maxWidth: MediaQuery.of(context).size.width * 0.75,
-                        ),
-                        decoration: BoxDecoration(
-                          color: msg['isUser']
-                              ? Colors.lightBlue.shade400
-                              : Colors.white,
-                          borderRadius: BorderRadius.only(
-                            topLeft: const Radius.circular(20),
-                            topRight: const Radius.circular(20),
-                            bottomLeft: Radius.circular(msg['isUser'] ? 20 : 0),
-                            bottomRight: Radius.circular(msg['isUser'] ? 0 : 20),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.grey.withOpacity(0.2),
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
-                            )
-                          ],
-                        ),
-                        child: Text(
-                          msg['text'],
-                          style: TextStyle(
-                            color: msg['isUser'] ? Colors.white : Colors.black87,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+    final isDark = Provider.of<ThemeManager>(context).isDarkMode;
 
-              // Input Area
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, -2),
-                    )
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        decoration: InputDecoration(
-                          hintText: 'Enter your symptoms...',
-                          filled: true,
-                          fillColor: Colors.blue.shade50,
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(30),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
+    return Scaffold(
+      backgroundColor: isDark ? Colors.black : Colors.blue.shade50,
+      appBar: AppBar(title: const Text("Symptoms Checker")),
+
+      body: Column(
+        children: [
+          // SYMPTOMS
+          if (_loadingSymptoms)
+            const LinearProgressIndicator()
+          else
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _availableSymptoms.take(10).map((s) {
+                  return GestureDetector(
+                    onTap: () => _analyzeSymptoms(s),
+                    child: Container(
+                      margin: const EdgeInsets.all(6),
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
                       ),
+                      child: Text(s),
                     ),
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: _sendMessage,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.lightBlue.shade700,
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.lightBlue.shade200.withOpacity(0.5),
-                              blurRadius: 6,
-                              offset: const Offset(0, 3),
-                            )
-                          ],
-                        ),
-                        child: const Icon(Icons.send, color: Colors.white),
-                      ),
-                    ),
-                  ],
-                ),
+                  );
+                }).toList(),
               ),
-            ],
+            ),
+
+          // CHAT
+          Expanded(
+            child: ListView.builder(
+              padding: const EdgeInsets.all(10),
+              itemCount: _messages.length,
+              itemBuilder: (context, i) {
+                final msg = _messages[i];
+
+                return Align(
+                  alignment: msg["isUser"]
+                      ? Alignment.centerRight
+                      : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(vertical: 6),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: msg["isUser"] ? Colors.blue : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(msg["text"]),
+                  ),
+                );
+              },
+            ),
+          ),
+
+          // INPUT
+          Container(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.attach_file),
+                  onPressed: _uploadFile,
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: _controller,
+                    decoration: const InputDecoration(
+                      hintText: "Enter symptoms...",
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: _loading
+                      ? const CircularProgressIndicator()
+                      : const Icon(Icons.send),
+                  onPressed: _send,
+                ),
+              ],
+            ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildBackgroundCircle(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
       ),
     );
   }

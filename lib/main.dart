@@ -23,15 +23,17 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themeManager = Provider.of<ThemeManager>(context);
-
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Health App',
-      themeMode: themeManager.currentTheme,
-      theme: lightTheme,
-      darkTheme: darkTheme,
-      home: AuthPage(),
+    return Consumer<ThemeManager>(
+      builder: (context, themeManager, child) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Health App',
+          themeMode: themeManager.currentTheme,
+          theme: lightTheme,
+          darkTheme: darkTheme,
+          home: AuthPage(),
+        );
+      },
     );
   }
 }

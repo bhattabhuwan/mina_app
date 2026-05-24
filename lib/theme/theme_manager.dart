@@ -17,7 +17,7 @@ final lightTheme = ThemeData(
   primaryColor: Colors.lightBlue,
   scaffoldBackgroundColor: Colors.blue.shade50,
   appBarTheme: const AppBarTheme(
-    color: Colors.lightBlue,
+    backgroundColor: Colors.lightBlue,
     iconTheme: IconThemeData(color: Colors.white),
   ),
 );
@@ -27,7 +27,7 @@ final darkTheme = ThemeData(
   primaryColor: Colors.lightBlue.shade200,
   scaffoldBackgroundColor: Colors.black,
   appBarTheme: const AppBarTheme(
-    color: Colors.black,
+    backgroundColor: Colors.black,
     iconTheme: IconThemeData(color: Colors.white),
   ),
 );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:mina_app/auth/signin_page.dart';
-import 'package:mina_app/auth/signup_page.dart';
+import 'package:mina_app/auth/signup_page.dart' hide SignInUI;
+ // import the API service
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
