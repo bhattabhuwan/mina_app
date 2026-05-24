@@ -6,7 +6,22 @@ class ApiService {
   final String baseUrl = "https://mina-backend-1.onrender.com";
 
   // ------------------------
-  // REGISTER USER
+  // Helper: Get headers with token
+  // ------------------------
+  Future<Map<String, String>> _getHeaders() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('token');
+    if (token == null || token.isEmpty) {
+      throw Exception("User not authenticated");
+    }
+    return {
+      "Authorization": "Bearer $token",
+      "Content-Type": "application/json",
+    };
+  }
+
+  // ------------------------
+  // AUTH METHODS
   // ------------------------
   Future<Map<String, dynamic>> registerUser({
     required String email,
@@ -24,7 +39,6 @@ class ApiService {
     List<String>? currentMedications,
   }) async {
     final url = Uri.parse("$baseUrl/api/v1/auth/register");
-
     final response = await http.post(
       url,
       headers: {"Content-Type": "application/json"},
@@ -44,7 +58,6 @@ class ApiService {
         "current_medications": currentMedications ?? [],
       }),
     );
-
     if (response.statusCode == 200 || response.statusCode == 201) {
       return jsonDecode(response.body);
     } else {
@@ -52,15 +65,11 @@ class ApiService {
     }
   }
 
-  // ------------------------
-  // LOGIN USER (SAVE TOKEN CORRECTLY)
-  // ------------------------
   Future<void> loginUser({
     required String username,
     required String password,
   }) async {
     final url = Uri.parse("$baseUrl/api/v1/auth/login");
-
     final response = await http.post(
       url,
       headers: {"Content-Type": "application/json"},
@@ -69,18 +78,12 @@ class ApiService {
         "password": password,
       }),
     );
-
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-
-      // Adjust this depending on your backend's token key
-      // Common possibilities: data['access_token'], data['data']['access_token'], etc.
       final token = data['access_token'] ?? data['data']?['access_token'];
-
       if (token == null) {
         throw Exception("Access token not found in response: $data");
       }
-
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('token', token);
     } else {
@@ -88,38 +91,13 @@ class ApiService {
     }
   }
 
-  // ------------------------
-  // GET CURRENT USER (/me)
-  // ------------------------
   Future<Map<String, dynamic>> getCurrentUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('token');
-
-    if (token == null || token.isEmpty) {
-      throw Exception("User not logged in");
-    }
-
     final url = Uri.parse("$baseUrl/api/v1/auth/me");
-
-    final response = await http.get(
-      url,
-      headers: {
-        "Authorization": "Bearer $token",
-        "Accept": "application/json",
-      },
-    );
-
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
     if (response.statusCode == 200) {
-      final Map<String, dynamic> data = jsonDecode(response.body);
-
-      // Ensure user data exists
-      if (!data.containsKey('full_name')) {
-        throw Exception("User data missing in response: $data");
-      }
-
-      return data;
+      return jsonDecode(response.body);
     } else if (response.statusCode == 401) {
-      // Token invalid or expired
       await logout();
       throw Exception("Session expired. Please login again.");
     } else {
@@ -127,44 +105,261 @@ class ApiService {
     }
   }
 
-  // ------------------------
-  // CHECK LOGIN STATUS
-  // ------------------------
   Future<bool> isLoggedIn() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     return token != null && token.isNotEmpty;
   }
 
-  // ------------------------
-  // LOGOUT USER
-  // ------------------------
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
   }
 
-
-  // ------------------------
-  // FORGOT PASSWORD
-  // ------------------------
-  Future<Map<String, dynamic>> forgotPassword({
-    required String email,
-  }) async {
+  Future<Map<String, dynamic>> forgotPassword({required String email}) async {
     final url = Uri.parse("$baseUrl/api/v1/auth/forgot-password");
-
     final response = await http.post(
       url,
       headers: {"Content-Type": "application/json"},
-      body: jsonEncode({
-        "email": email,
-      }),
+      body: jsonEncode({"email": email}),
     );
-
     if (response.statusCode == 200 || response.statusCode == 201) {
       return jsonDecode(response.body);
     } else {
       throw Exception("Forgot password request failed: ${response.body}");
+    }
+  }
+
+  // ------------------------
+  // USER PROFILE (Update)
+  // ------------------------
+  Future<Map<String, dynamic>> updateUserProfile(Map<String, dynamic> data) async {
+    final url = Uri.parse("$baseUrl/api/v1/auth/me");
+    final headers = await _getHeaders();
+    final response = await http.put(url, headers: headers, body: jsonEncode(data));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to update profile: ${response.body}");
+    }
+  }
+
+  // ------------------------
+  // DOCTORS (if your backend provides a list)
+  // ------------------------
+  Future<List<dynamic>> getDoctors() async {
+    final url = Uri.parse("$baseUrl/api/v1/doctors"); // adjust endpoint if needed
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      // If endpoint doesn't exist, return empty list or fallback
+      return [];
+    }
+  }
+
+  // ------------------------
+  // APPOINTMENTS
+  // ------------------------
+  Future<Map<String, dynamic>> createAppointment(Map<String, dynamic> data) async {
+    final url = Uri.parse("$baseUrl/api/v1/appointments/");
+    final headers = await _getHeaders();
+    final response = await http.post(url, headers: headers, body: jsonEncode(data));
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to create appointment: ${response.body}");
+    }
+  }
+
+  Future<List<dynamic>> getAppointments() async {
+    final url = Uri.parse("$baseUrl/api/v1/appointments/");
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to fetch appointments: ${response.body}");
+    }
+  }
+
+  Future<Map<String, dynamic>> getAppointmentById(String id) async {
+    final url = Uri.parse("$baseUrl/api/v1/appointments/$id");
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to fetch appointment: ${response.body}");
+    }
+  }
+
+  Future<Map<String, dynamic>> updateAppointment(String id, Map<String, dynamic> data) async {
+    final url = Uri.parse("$baseUrl/api/v1/appointments/$id");
+    final headers = await _getHeaders();
+    final response = await http.put(url, headers: headers, body: jsonEncode(data));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to update appointment: ${response.body}");
+    }
+  }
+
+  Future<void> cancelAppointment(String id) async {
+    final url = Uri.parse("$baseUrl/api/v1/appointments/$id");
+    final headers = await _getHeaders();
+    final response = await http.delete(url, headers: headers);
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception("Failed to cancel appointment: ${response.body}");
+    }
+  }
+
+  Future<Map<String, dynamic>> updateAppointmentStatus(String id, String status) async {
+    final url = Uri.parse("$baseUrl/api/v1/appointments/$id/status");
+    final headers = await _getHeaders();
+    final response = await http.patch(url, headers: headers, body: jsonEncode({"status": status}));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to update appointment status: ${response.body}");
+    }
+  }
+
+  Future<String> startVideoCall(String id) async {
+    final url = Uri.parse("$baseUrl/api/v1/appointments/$id/start-video-call");
+    final headers = await _getHeaders();
+    final response = await http.post(url, headers: headers);
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['video_url']; // adjust based on backend response
+    } else {
+      throw Exception("Failed to start video call: ${response.body}");
+    }
+  }
+
+  Future<List<dynamic>> getUpcomingAppointments() async {
+    final url = Uri.parse("$baseUrl/api/v1/appointments/upcoming");
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to fetch upcoming appointments: ${response.body}");
+    }
+  }
+
+  // ------------------------
+  // MEDICAL RECORDS
+  // ------------------------
+  Future<Map<String, dynamic>> createMedicalRecord(Map<String, dynamic> data) async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/records");
+    final headers = await _getHeaders();
+    final response = await http.post(url, headers: headers, body: jsonEncode(data));
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to create medical record: ${response.body}");
+    }
+  }
+
+  Future<List<dynamic>> getMedicalRecords() async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/records");
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to fetch medical records: ${response.body}");
+    }
+  }
+
+  Future<Map<String, dynamic>> getMedicalRecordById(String recordId) async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/records/$recordId");
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to fetch medical record: ${response.body}");
+    }
+  }
+
+  Future<Map<String, dynamic>> updateMedicalRecord(String recordId, Map<String, dynamic> data) async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/records/$recordId");
+    final headers = await _getHeaders();
+    final response = await http.put(url, headers: headers, body: jsonEncode(data));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to update medical record: ${response.body}");
+    }
+  }
+
+  Future<List<dynamic>> getRecordTypes() async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/records/types");
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to fetch record types: ${response.body}");
+    }
+  }
+
+  // ------------------------
+  // PRESCRIPTIONS
+  // ------------------------
+  Future<Map<String, dynamic>> createPrescription(Map<String, dynamic> data) async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/prescriptions");
+    final headers = await _getHeaders();
+    final response = await http.post(url, headers: headers, body: jsonEncode(data));
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to create prescription: ${response.body}");
+    }
+  }
+
+  Future<List<dynamic>> getPrescriptions() async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/prescriptions");
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to fetch prescriptions: ${response.body}");
+    }
+  }
+
+  Future<Map<String, dynamic>> getPrescriptionById(String prescriptionId) async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/prescriptions/$prescriptionId");
+    final headers = await _getHeaders();
+    final response = await http.get(url, headers: headers);
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to fetch prescription: ${response.body}");
+    }
+  }
+
+  Future<Map<String, dynamic>> updatePrescription(String prescriptionId, Map<String, dynamic> data) async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/prescriptions/$prescriptionId");
+    final headers = await _getHeaders();
+    final response = await http.put(url, headers: headers, body: jsonEncode(data));
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception("Failed to update prescription: ${response.body}");
+    }
+  }
+
+  Future<void> deactivatePrescription(String prescriptionId) async {
+    final url = Uri.parse("$baseUrl/api/v1/medical/prescriptions/$prescriptionId");
+    final headers = await _getHeaders();
+    final response = await http.delete(url, headers: headers);
+    if (response.statusCode != 200 && response.statusCode != 204) {
+      throw Exception("Failed to deactivate prescription: ${response.body}");
     }
   }
 }

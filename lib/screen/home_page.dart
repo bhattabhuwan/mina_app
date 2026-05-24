@@ -1,7 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mina_app/auth/ApiService.dart';
-import 'package:mina_app/helper/step_counter.dart';
+import 'package:mina_app/provider/user_provider.dart';
 import 'package:mina_app/screen/Counsult_page.dart';
+import 'package:mina_app/screen/exercise_page.dart';
+import 'package:mina_app/screen/health_tips_page.dart';
 import 'package:mina_app/screen/profile_page.dart';
 import 'package:mina_app/screen/symptoms_page.dart';
 import 'package:mina_app/theme/theme_manager.dart';
@@ -21,10 +24,10 @@ class _HomePageState extends State<HomePage> {
   int selectedIndex = 0;
 
   final List<Widget> pages = [
-    HomeContent(),
-    ProfilePage(),
-    ConsultPage(),
-    SymptomsCheckerPage(),
+    const HomeContent(),
+    const ProfilePage(),
+    const ConsultPage(),
+    const SymptomsCheckerPage(),
   ];
 
   @override
@@ -33,15 +36,13 @@ class _HomePageState extends State<HomePage> {
     final isDarkMode = themeManager.isDarkMode;
 
     return Scaffold(
-      backgroundColor:
-          isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
+      backgroundColor: isDarkMode ? Colors.grey.shade900 : Colors.grey.shade100,
       body: SafeArea(child: pages[selectedIndex]),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: selectedIndex,
         onTap: (index) => setState(() => selectedIndex = index),
         type: BottomNavigationBarType.fixed,
-        backgroundColor:
-            isDarkMode ? Colors.grey.shade800 : Colors.white,
+        backgroundColor: isDarkMode ? Colors.grey.shade800 : Colors.white,
         selectedItemColor: Colors.blue.shade700,
         unselectedItemColor: Colors.grey,
         items: const [
@@ -58,7 +59,7 @@ class _HomePageState extends State<HomePage> {
 }
 
 // --------------------
-// Home Content (FIXED CURRENT USER)
+// Home Content
 // --------------------
 class HomeContent extends StatefulWidget {
   const HomeContent({super.key});
@@ -68,38 +69,71 @@ class HomeContent extends StatefulWidget {
 }
 
 class _HomeContentState extends State<HomeContent> {
-  final ApiService apiService = ApiService();
-
-  String userName = 'User';
-  bool isLoading = true;
+  final ApiService _apiService = ApiService();
+  int _appointmentCount = 0;
+  bool _loadingCount = true;
 
   @override
   void initState() {
     super.initState();
-    fetchUser();
+    _loadAppointmentCount();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<UserProvider>(context, listen: false).loadUserData();
+    });
   }
 
-  Future<void> fetchUser() async {
+  Future<void> _loadAppointmentCount() async {
     try {
-      final response = await apiService.getCurrentUser();
-
+      final appointments = await _apiService.getUpcomingAppointments();
       setState(() {
-        userName = response['full_name'] ?? 'User';
-        isLoading = false;
+        _appointmentCount = appointments.length;
+        _loadingCount = false;
       });
     } catch (e) {
-      debugPrint("Fetch user error: $e");
-      setState(() {
-        userName = 'User';
-        isLoading = false;
-      });
+      debugPrint("Error loading appointments: $e");
+      setState(() => _loadingCount = false);
     }
+  }
+
+  String _getGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'Good Morning';
+    if (hour < 17) return 'Good Afternoon';
+    return 'Good Evening';
+  }
+
+  void _openProfile(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ProfilePage()),
+    ).then((_) {
+      Provider.of<UserProvider>(context, listen: false).loadUserData();
+    });
+  }
+
+  void _openAppointments(BuildContext context) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const AppointmentsPage()),
+    );
+    if (result == true) {
+      _loadAppointmentCount();
+    }
+  }
+
+  void _openExercisePage() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ExercisePage()), // no parameter needed
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final themeManager = Provider.of<ThemeManager>(context);
+    final userProvider = Provider.of<UserProvider>(context);
     final isDarkMode = themeManager.isDarkMode;
+    final greeting = _getGreeting();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.only(bottom: 20),
@@ -107,7 +141,7 @@ class _HomeContentState extends State<HomeContent> {
         children: [
           // HEADER
           Container(
-            height: 220,
+            height: 240,
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: isDarkMode
@@ -119,50 +153,71 @@ class _HomeContentState extends State<HomeContent> {
                 bottomRight: Radius.circular(35),
               ),
             ),
-            padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
+            padding: const EdgeInsets.fromLTRB(20, 40, 20, 20),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text(
-                      'Good Morning,',
-                      style:
-                          TextStyle(color: Colors.white70, fontSize: 18),
+                    Text(
+                      '$greeting,',
+                      style: const TextStyle(color: Colors.white70, fontSize: 18),
                     ),
                     const SizedBox(height: 5),
-                    isLoading
-                        ? const CircularProgressIndicator(color: Colors.white)
-                        : Text(
-                            '$userName 👋',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+                    GestureDetector(
+                      onTap: () => _openProfile(context),
+                      child: Text(
+                        '${userProvider.fullName} 👋',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                     const SizedBox(height: 15),
                     Row(
                       children: [
-                        _buildStatCard('Steps', isDarkMode,
-                            child: StepCounter()),
+                        // Exercise card – only icon
+                        GestureDetector(
+                          onTap: _openExercisePage,
+                          child: _buildStatCard('Exercise', isDarkMode,
+                              icon: Icons.fitness_center,
+                              showValue: false),
+                        ),
                         const SizedBox(width: 15),
-                        _buildStatCard('Appointments', isDarkMode,
-                            value: '2'),
+                        // Appointments card – shows count
+                        GestureDetector(
+                          onTap: () => _openAppointments(context),
+                          child: _buildStatCard('Appointments', isDarkMode,
+                              icon: Icons.calendar_month,
+                              value: _loadingCount ? '...' : _appointmentCount.toString()),
+                        ),
                       ],
                     ),
                   ],
                 ),
-                const CircleAvatar(
-                  radius: 30,
-                  backgroundImage:
-                      AssetImage('lib/images/profile.jpeg'),
+                GestureDetector(
+                  onTap: () => _openProfile(context),
+                  child: CircleAvatar(
+                    radius: 45,
+                    backgroundColor: Colors.blue.shade300,
+                    backgroundImage: userProvider.profileImagePath != null &&
+                            File(userProvider.profileImagePath!).existsSync()
+                        ? FileImage(File(userProvider.profileImagePath!))
+                        : null,
+                    child: userProvider.profileImagePath == null ||
+                            !File(userProvider.profileImagePath!).existsSync()
+                        ? const Icon(Icons.person, size: 45, color: Colors.white)
+                        : null,
+                  ),
                 ),
               ],
             ),
           ),
-
           const SizedBox(height: 20),
 
           // ACTION CARDS
@@ -170,8 +225,7 @@ class _HomeContentState extends State<HomeContent> {
             height: 120,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               children: [
                 _buildActionCard(
                   context,
@@ -181,9 +235,8 @@ class _HomeContentState extends State<HomeContent> {
                   Colors.blue.shade500,
                   () => Navigator.push(
                     context,
-                    MaterialPageRoute(
-                        builder: (_) => ConsultPage()),
-                  ),
+                    MaterialPageRoute(builder: (_) => const ConsultPage()),
+                  ).then((_) => _loadAppointmentCount()),
                 ),
                 const SizedBox(width: 15),
                 _buildActionCard(
@@ -194,9 +247,7 @@ class _HomeContentState extends State<HomeContent> {
                   Colors.lightBlue.shade500,
                   () => Navigator.push(
                     context,
-                    MaterialPageRoute(
-                        builder: (_) =>
-                            SymptomsCheckerPage()),
+                    MaterialPageRoute(builder: (_) => const SymptomsCheckerPage()),
                   ),
                 ),
                 const SizedBox(width: 15),
@@ -208,8 +259,7 @@ class _HomeContentState extends State<HomeContent> {
                   Colors.blue.shade300,
                   () => Navigator.push(
                     context,
-                    MaterialPageRoute(
-                        builder: (_) => HealthTipsPage()),
+                    MaterialPageRoute(builder: (_) => const HealthTipsPage()),
                   ),
                 ),
               ],
@@ -220,52 +270,36 @@ class _HomeContentState extends State<HomeContent> {
 
           // DOCTORS
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('Top Doctors',
                     style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: isDarkMode
-                            ? Colors.white
-                            : Colors.black)),
+                        color: isDarkMode ? Colors.white : Colors.black)),
                 Text('See all',
                     style: TextStyle(
-                        color: isDarkMode
-                            ? Colors.blue.shade300
-                            : Colors.blue)),
+                        color: isDarkMode ? Colors.blue.shade300 : Colors.blue)),
               ],
             ),
           ),
-
           const SizedBox(height: 15),
-
           SizedBox(
             height: 180,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               children: [
-                _buildDoctorCard(
-                    'Dr. Smith', 'Cardiologist', 4.8,
-                    isDarkMode),
+                _buildDoctorCard('Dr. Smith', 'Cardiologist', 4.8, isDarkMode),
                 const SizedBox(width: 15),
-                _buildDoctorCard(
-                    'Dr. Amy', 'Dermatologist', 4.6,
-                    isDarkMode),
+                _buildDoctorCard('Dr. Amy', 'Dermatologist', 4.6, isDarkMode),
                 const SizedBox(width: 15),
-                _buildDoctorCard(
-                    'Dr. John', 'Neurologist', 4.7,
-                    isDarkMode),
+                _buildDoctorCard('Dr. John', 'Neurologist', 4.7, isDarkMode),
               ],
             ),
           ),
-
           const SizedBox(height: 30),
         ],
       ),
@@ -273,7 +307,7 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   Widget _buildStatCard(String title, bool isDarkMode,
-      {String? value, Widget? child}) {
+      {String? value, Widget? child, IconData? icon, bool showValue = true}) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -282,15 +316,19 @@ class _HomeContentState extends State<HomeContent> {
       ),
       child: Row(
         children: [
-          Icon(Icons.directions_walk,
-              color: isDarkMode ? Colors.lightBlue.shade300 : Colors.blue.shade700,
-              size: 20),
-          const SizedBox(width: 8),
-          child ??
-              Text(value ?? '',
-                  style: TextStyle(
-                      color: isDarkMode ? Colors.white : Colors.blue.shade700,
-                      fontWeight: FontWeight.bold)),
+          Icon(
+            icon ?? Icons.directions_walk,
+            color: isDarkMode ? Colors.lightBlue.shade300 : Colors.blue.shade700,
+            size: 20,
+          ),
+          if (showValue) ...[
+            const SizedBox(width: 8),
+            child ??
+                Text(value ?? '',
+                    style: TextStyle(
+                        color: isDarkMode ? Colors.white : Colors.blue.shade700,
+                        fontWeight: FontWeight.bold)),
+          ],
         ],
       ),
     );
@@ -307,11 +345,9 @@ class _HomeContentState extends State<HomeContent> {
       onTap: onTap,
       child: Container(
         width: 140,
-        padding: const EdgeInsets.symmetric(
-            vertical: 12, horizontal: 14),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
         decoration: BoxDecoration(
-          gradient:
-              LinearGradient(colors: [startColor, endColor]),
+          gradient: LinearGradient(colors: [startColor, endColor]),
           borderRadius: BorderRadius.circular(25),
         ),
         child: Column(
@@ -321,8 +357,7 @@ class _HomeContentState extends State<HomeContent> {
             const SizedBox(height: 8),
             Text(title,
                 style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold),
+                    color: Colors.white, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center),
           ],
         ),
@@ -330,8 +365,8 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
-  Widget _buildDoctorCard(String name, String specialty,
-      double rating, bool isDarkMode) {
+  Widget _buildDoctorCard(
+      String name, String specialty, double rating, bool isDarkMode) {
     return Container(
       width: 140,
       padding: const EdgeInsets.all(12),
@@ -340,8 +375,7 @@ class _HomeContentState extends State<HomeContent> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-              color: Colors.blue.shade100.withOpacity(
-                  isDarkMode ? 0.1 : 0.5),
+              color: Colors.blue.shade100.withOpacity(isDarkMode ? 0.1 : 0.5),
               blurRadius: 10,
               offset: const Offset(0, 5)),
         ],
@@ -350,15 +384,18 @@ class _HomeContentState extends State<HomeContent> {
         children: [
           const CircleAvatar(
             radius: 35,
-            backgroundImage:
-                AssetImage('lib/images/profile.jpeg'),
+            backgroundColor: Colors.blue,
+            child: Icon(
+              Icons.medical_services,
+              color: Colors.white,
+              size: 30,
+            ),
           ),
           const SizedBox(height: 10),
           Text(name,
               style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  color:
-                      isDarkMode ? Colors.white : Colors.black)),
+                  color: isDarkMode ? Colors.white : Colors.black)),
           Text(specialty,
               style: TextStyle(
                   color: isDarkMode
@@ -367,14 +404,11 @@ class _HomeContentState extends State<HomeContent> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.star,
-                  color: Colors.amber, size: 16),
+              const Icon(Icons.star, color: Colors.amber, size: 16),
               Text(rating.toString(),
                   style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: isDarkMode
-                          ? Colors.white
-                          : Colors.black)),
+                      color: isDarkMode ? Colors.white : Colors.black)),
             ],
           )
         ],
@@ -384,18 +418,122 @@ class _HomeContentState extends State<HomeContent> {
 }
 
 // --------------------
-// EXTRA PAGES (UNCHANGED)
+// Appointments Page (unchanged)
 // --------------------
-class HealthTipsPage extends StatelessWidget {
-  const HealthTipsPage({super.key});
+class AppointmentsPage extends StatefulWidget {
+  const AppointmentsPage({super.key});
+
+  @override
+  State<AppointmentsPage> createState() => _AppointmentsPageState();
+}
+
+class _AppointmentsPageState extends State<AppointmentsPage> {
+  final ApiService _api = ApiService();
+  List<dynamic> _appointments = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchAppointments();
+  }
+
+  Future<void> _fetchAppointments() async {
+    try {
+      final data = await _api.getUpcomingAppointments();
+      setState(() {
+        _appointments = data;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint("Error fetching appointments: $e");
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _cancelAppointment(String id) async {
+    try {
+      await _api.cancelAppointment(id);
+      _fetchAppointments();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Appointment cancelled')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to cancel: $e')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isDarkMode = Provider.of<ThemeManager>(context).isDarkMode;
+
     return Scaffold(
       appBar: AppBar(
-          title: const Text('Health Tips'),
-          backgroundColor: Colors.blue.shade500),
-      body: const Center(child: Text('Health tips coming soon')),
+        title: const Text('My Appointments'),
+        backgroundColor: isDarkMode ? Colors.grey.shade800 : Colors.lightBlue.shade700,
+        foregroundColor: Colors.white,
+      ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _appointments.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.event_busy, size: 64, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      const Text('No upcoming appointments'),
+                      const SizedBox(height: 8),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context);
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const ConsultPage()),
+                          ).then((_) => _fetchAppointments());
+                        },
+                        child: const Text('Book a doctor'),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: _appointments.length,
+                  itemBuilder: (context, index) {
+                    final apt = _appointments[index];
+                    final dateTime = DateTime.tryParse(apt['date_time'] ?? '');
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: Colors.blue.shade100,
+                          child: const Icon(Icons.medical_services, color: Colors.blue),
+                        ),
+                        title: Text(apt['doctor_name'] ?? 'Doctor'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(apt['specialty'] ?? 'General'),
+                            if (dateTime != null)
+                              Text(
+                                '${dateTime.toLocal()}',
+                                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              ),
+                          ],
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.cancel, color: Colors.red),
+                          onPressed: () => _cancelAppointment(apt['id']),
+                        ),
+                        isThreeLine: true,
+                      ),
+                    );
+                  },
+                ),
     );
   }
 }
