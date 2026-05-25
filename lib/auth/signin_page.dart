@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:mina_app/auth/ApiService.dart';
 import 'package:mina_app/auth/Forgot_pass.dart';
-import 'package:mina_app/auth/signup_page.dart';
-import 'package:mina_app/provider/user_provider.dart'; // add this
+import 'package:mina_app/provider/user_provider.dart';
 import 'package:mina_app/screen/home_page.dart';
-import 'package:provider/provider.dart'; // add this
+import 'package:provider/provider.dart';
 
 class SignInUI extends StatefulWidget {
   final VoidCallback showSignUpPage;
@@ -18,49 +17,105 @@ class SignInUI extends StatefulWidget {
 class _SignInUIState extends State<SignInUI> {
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  bool _loading = false;
 
+  bool _loading = false;
+  String? _errorText;
+
+  // ---------------- FRIENDLY ERROR HANDLER ----------------
+  String _getFriendlyError(dynamic e) {
+    final msg = e.toString().toLowerCase();
+
+    if (msg.contains("401") || msg.contains("unauthorized")) {
+      return "Invalid email or password.";
+    }
+
+    if (msg.contains("404")) {
+      return "Server not found. Try again later.";
+    }
+
+    if (msg.contains("network") || msg.contains("socket")) {
+      return "No internet connection.";
+    }
+
+    if (msg.contains("timeout")) {
+      return "Request timeout. Please try again.";
+    }
+
+    return "Something went wrong. Please try again.";
+  }
+
+  // ---------------- LOGIN ----------------
   void login() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    // FIELD VALIDATION
+    if (email.isEmpty || password.isEmpty) {
+      setState(() {
+        _errorText = "Please fill all required fields";
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
+      _errorText = null;
     });
 
     try {
       final api = ApiService();
+
       await api.loginUser(
-        username: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+        username: email,
+        password: password,
       );
 
-      // Fetch user data from API after successful login
       final userData = await api.getCurrentUser();
 
-      // Save user data to SharedPreferences and update provider
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      final userProvider =
+          Provider.of<UserProvider>(context, listen: false);
+
       await userProvider.updateUser(
         fullName: userData['full_name'] ?? 'User',
         email: userData['email'] ?? '',
       );
 
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Login successful!")),
+        const SnackBar(
+          content: Text("Login successful!"),
+          backgroundColor: Colors.green,
+        ),
       );
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => HomePage()),
       );
+
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Login failed: $e")),
-      );
-    } finally {
+      if (!mounted) return;
+
       setState(() {
-        _loading = false;
+        _errorText = _getFriendlyError(e);
       });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_errorText!),
+          backgroundColor: Colors.red,
+        ),
+      );
+
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 
+  // ---------------- FORGOT PASSWORD ----------------
   void _showForgotPasswordDialog() {
     showDialog(
       context: context,
@@ -73,7 +128,7 @@ class _SignInUIState extends State<SignInUI> {
     final width = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF5C5FFF), // Blue background
+      backgroundColor: const Color(0xFF5C5FFF),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -81,15 +136,15 @@ class _SignInUIState extends State<SignInUI> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Robot illustration
+
                 Image.asset(
                   'lib/images/logo.png',
                   height: 150,
                   width: 150,
                 ),
+
                 const SizedBox(height: 20),
 
-                // App name
                 const Text(
                   'MINA',
                   style: TextStyle(
@@ -98,6 +153,7 @@ class _SignInUIState extends State<SignInUI> {
                     color: Colors.white,
                   ),
                 ),
+
                 const Text(
                   'HEALTH APP',
                   style: TextStyle(
@@ -105,21 +161,55 @@ class _SignInUIState extends State<SignInUI> {
                     color: Colors.white70,
                   ),
                 ),
+
                 const SizedBox(height: 40),
 
-                // Email/Phone field
-                MyTextfield(
+                // EMAIL
+                TextField(
                   controller: _emailController,
-                  hintText: "Email or Phone",
-                  obscuretext: false,
+                  decoration: InputDecoration(
+                    hintText: "Email or Phone",
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
                 ),
+
                 const SizedBox(height: 16),
 
-                // Password field
-                PasswordTextField(controller: _passwordController, hintText: "Password"),
-                const SizedBox(height: 20),
+                // PASSWORD
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: InputDecoration(
+                    hintText: "Password",
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                    ),
+                  ),
+                ),
 
-                // Forgot Password
+                const SizedBox(height: 10),
+
+                // ERROR TEXT (INLINE)
+                if (_errorText != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 5),
+                    child: Text(
+                      _errorText!,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+
+                const SizedBox(height: 10),
+
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
@@ -130,9 +220,10 @@ class _SignInUIState extends State<SignInUI> {
                     ),
                   ),
                 ),
+
                 const SizedBox(height: 10),
 
-                // Login Button
+                // LOGIN BUTTON
                 SizedBox(
                   height: 50,
                   width: width * 0.9,
@@ -146,7 +237,9 @@ class _SignInUIState extends State<SignInUI> {
                       ),
                     ),
                     child: _loading
-                        ? const CircularProgressIndicator(color: Color(0xFF5C5FFF))
+                        ? const CircularProgressIndicator(
+                            color: Color(0xFF5C5FFF),
+                          )
                         : const Text(
                             "Login",
                             style: TextStyle(
@@ -156,16 +249,16 @@ class _SignInUIState extends State<SignInUI> {
                           ),
                   ),
                 ),
+
                 const SizedBox(height: 20),
 
-                // OR separator
                 const Text(
                   "or",
                   style: TextStyle(color: Colors.white70),
                 ),
+
                 const SizedBox(height: 20),
 
-                // Create account button
                 SizedBox(
                   height: 50,
                   width: width * 0.9,
@@ -195,5 +288,3 @@ class _SignInUIState extends State<SignInUI> {
     );
   }
 }
-
-// PasswordTextField, MyTextfield, ForgotPasswordDialog remain unchanged...

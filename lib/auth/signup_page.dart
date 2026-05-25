@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:mina_app/auth/ApiService.dart';
-import 'signin_page.dart'; // adjust import if needed
+import 'signin_page.dart';
 
 class SignUpUI extends StatefulWidget {
   final VoidCallback showSignInPage;
 
-  const SignUpUI({super.key, required this.showSignInPage});
+  const SignUpUI({
+    super.key,
+    required this.showSignInPage,
+  });
 
   @override
   State<SignUpUI> createState() => _SignUpUIState();
 }
 
 class _SignUpUIState extends State<SignUpUI> {
+
   final usernameController = TextEditingController();
   final emailController = TextEditingController();
   final phoneController = TextEditingController();
@@ -24,71 +28,212 @@ class _SignUpUIState extends State<SignUpUI> {
   final emergencyContactController = TextEditingController();
 
   bool _loading = false;
+  String? _errorText;
 
+  // ---------------- ERROR HANDLER ----------------
+  String _getFriendlyError(dynamic e) {
+
+    final msg = e.toString().toLowerCase();
+
+    if (msg.contains("400")) {
+      return "Invalid information provided.";
+    }
+
+    if (msg.contains("401")) {
+      return "Unauthorized request.";
+    }
+
+    if (msg.contains("409") ||
+        msg.contains("already exists") ||
+        msg.contains("duplicate")) {
+      return "Account already exists.";
+    }
+
+    if (msg.contains("network") ||
+        msg.contains("socket")) {
+      return "No internet connection.";
+    }
+
+    if (msg.contains("timeout")) {
+      return "Request timeout. Please try again.";
+    }
+
+    return "Registration failed. Please try again.";
+  }
+
+  // ---------------- REGISTER ----------------
   void register() async {
-    if (passwordController.text != confirmPassController.text) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Passwords do not match")));
+
+    final username = usernameController.text.trim();
+    final email = emailController.text.trim();
+    final phone = phoneController.text.trim();
+    final password = passwordController.text.trim();
+    final confirmPassword = confirmPassController.text.trim();
+    final fullName = fullNameController.text.trim();
+    final gender = genderController.text.trim();
+    final dob = dobController.text.trim();
+    final address = addressController.text.trim();
+    final emergencyContact =
+        emergencyContactController.text.trim();
+
+    // REQUIRED VALIDATION
+    if (username.isEmpty ||
+        email.isEmpty ||
+        password.isEmpty ||
+        confirmPassword.isEmpty ||
+        fullName.isEmpty) {
+
+      setState(() {
+        _errorText =
+            "Please fill all required fields.";
+      });
+
       return;
     }
 
+    // EMAIL VALIDATION
+    final emailRegex = RegExp(
+      r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$',
+    );
+
+    if (!emailRegex.hasMatch(email)) {
+
+      setState(() {
+        _errorText =
+            "Please enter a valid email.";
+      });
+
+      return;
+    }
+
+    // PASSWORD VALIDATION
+    if (password.length < 6) {
+
+      setState(() {
+        _errorText =
+            "Password must be at least 6 characters.";
+      });
+
+      return;
+    }
+
+    // PASSWORD MATCH
+    if (password != confirmPassword) {
+
+      setState(() {
+        _errorText = "Passwords do not match.";
+      });
+
+      return;
+    }
+
+    // DATE VALIDATION
+    DateTime? parsedDob;
+
+    try {
+      parsedDob = DateTime.parse(dob);
+    } catch (_) {
+
+      setState(() {
+        _errorText =
+            "Invalid date format. Use YYYY-MM-DD.";
+      });
+
+      return;
+    }
+
+    // START LOADING
     setState(() {
       _loading = true;
+      _errorText = null;
     });
 
     try {
+
       final api = ApiService();
+
       await api.registerUser(
-        email: emailController.text.trim(),
-        username: usernameController.text.trim(),
-        fullName: fullNameController.text.trim(),
-        phone: phoneController.text.trim(),
-        gender: genderController.text.trim(),
+        email: email,
+        username: username,
+        fullName: fullName,
+        phone: phone,
+        gender: gender,
         role: "patient",
-        password: passwordController.text.trim(),
-        dateOfBirth: DateTime.parse(dobController.text.trim()),
-        address: addressController.text.trim(),
-        emergencyContact: emergencyContactController.text.trim(),
+        password: password,
+        dateOfBirth: parsedDob,
+        address: address,
+        emergencyContact: emergencyContact,
         medicalConditions: [],
         allergies: [],
         currentMedications: [],
       );
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text("Registered successfully!")));
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Registered successfully!"),
+          backgroundColor: Colors.green,
+        ),
+      );
+
       widget.showSignInPage();
+
     } catch (e) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text("Registration failed: $e")));
-    } finally {
+
+      if (!mounted) return;
+
       setState(() {
-        _loading = false;
+        _errorText = _getFriendlyError(e);
       });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_errorText!),
+          backgroundColor: Colors.red,
+        ),
+      );
+
+    } finally {
+
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+
     final width = MediaQuery.of(context).size.width;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF5C5FFF), // Same as SignInUI
+      backgroundColor: const Color(0xFF5C5FFF),
+
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 24,
+              vertical: 40,
+            ),
+
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Logo (same as SignInUI)
+
+                // LOGO
                 Image.asset(
                   'lib/images/logo.png',
                   height: 150,
                   width: 150,
                 ),
+
                 const SizedBox(height: 20),
 
-                // App name
+                // TITLE
                 const Text(
                   'MINA',
                   style: TextStyle(
@@ -97,6 +242,7 @@ class _SignUpUIState extends State<SignUpUI> {
                     color: Colors.white,
                   ),
                 ),
+
                 const Text(
                   'HEALTH APP',
                   style: TextStyle(
@@ -104,99 +250,186 @@ class _SignUpUIState extends State<SignUpUI> {
                     color: Colors.white70,
                   ),
                 ),
+
                 const SizedBox(height: 30),
 
-                // Full Name
-                MyTextfield(controller: fullNameController, hintText: "Full Name", obscuretext: false),
+                // FULL NAME
+                MyTextfield(
+                  controller: fullNameController,
+                  hintText: "Full Name",
+                  obscuretext: false,
+                ),
+
                 const SizedBox(height: 16),
 
-                // Username
-                MyTextfield(controller: usernameController, hintText: "Username", obscuretext: false),
+                // USERNAME
+                MyTextfield(
+                  controller: usernameController,
+                  hintText: "Username",
+                  obscuretext: false,
+                ),
+
                 const SizedBox(height: 16),
 
-                // Email
-                MyTextfield(controller: emailController, hintText: "Email", obscuretext: false),
+                // EMAIL
+                MyTextfield(
+                  controller: emailController,
+                  hintText: "Email",
+                  obscuretext: false,
+                ),
+
                 const SizedBox(height: 16),
 
-                // Phone
-                MyTextfield(controller: phoneController, hintText: "Phone Number", obscuretext: false),
+                // PHONE
+                MyTextfield(
+                  controller: phoneController,
+                  hintText: "Phone Number",
+                  obscuretext: false,
+                ),
+
                 const SizedBox(height: 16),
 
-                // Gender
-                MyTextfield(controller: genderController, hintText: "Gender", obscuretext: false),
+                // GENDER
+                MyTextfield(
+                  controller: genderController,
+                  hintText: "Gender",
+                  obscuretext: false,
+                ),
+
                 const SizedBox(height: 16),
 
-                // Date of Birth
-                MyTextfield(controller: dobController, hintText: "Date of Birth (YYYY-MM-DD)", obscuretext: false),
+                // DOB
+                MyTextfield(
+                  controller: dobController,
+                  hintText:
+                      "Date of Birth (YYYY-MM-DD)",
+                  obscuretext: false,
+                ),
+
                 const SizedBox(height: 16),
 
-                // Address
-                MyTextfield(controller: addressController, hintText: "Address", obscuretext: false),
+                // ADDRESS
+                MyTextfield(
+                  controller: addressController,
+                  hintText: "Address",
+                  obscuretext: false,
+                ),
+
                 const SizedBox(height: 16),
 
-                // Emergency Contact
-                MyTextfield(controller: emergencyContactController, hintText: "Emergency Contact", obscuretext: false),
+                // EMERGENCY CONTACT
+                MyTextfield(
+                  controller: emergencyContactController,
+                  hintText: "Emergency Contact",
+                  obscuretext: false,
+                ),
+
                 const SizedBox(height: 16),
 
-                // Password
-                PasswordTextField(controller: passwordController, hintText: "Password"),
+                // PASSWORD
+                PasswordTextField(
+                  controller: passwordController,
+                  hintText: "Password",
+                ),
+
                 const SizedBox(height: 16),
 
-                // Confirm Password
-                ConfirmPasswordTextField(controller: confirmPassController, hintText: "Confirm Password"),
+                // CONFIRM PASSWORD
+                ConfirmPasswordTextField(
+                  controller: confirmPassController,
+                  hintText: "Confirm Password",
+                ),
+
+                // ERROR TEXT
+                if (_errorText != null)
+                  Padding(
+                    padding:
+                        const EdgeInsets.only(top: 10),
+                    child: Text(
+                      _errorText!,
+                      style: const TextStyle(
+                        color: Colors.redAccent,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+
                 const SizedBox(height: 20),
 
-                // Sign Up Button
+                // SIGN UP BUTTON
                 SizedBox(
                   height: 50,
                   width: width * 0.9,
+
                   child: ElevatedButton(
-                    onPressed: _loading ? null : register,
+                    onPressed:
+                        _loading ? null : register,
+
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF5C5FFF),
+                      foregroundColor:
+                          const Color(0xFF5C5FFF),
+
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
+                        borderRadius:
+                            BorderRadius.circular(30),
                       ),
                     ),
+
                     child: _loading
-                        ? const CircularProgressIndicator(color: Color(0xFF5C5FFF))
+                        ? const CircularProgressIndicator(
+                            color:
+                                Color(0xFF5C5FFF),
+                          )
                         : const Text(
                             "Sign Up",
                             style: TextStyle(
                               fontSize: 18,
-                              fontWeight: FontWeight.bold,
+                              fontWeight:
+                                  FontWeight.bold,
                             ),
                           ),
                   ),
                 ),
+
                 const SizedBox(height: 20),
 
-                // OR separator
                 const Text(
                   "or",
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(
+                    color: Colors.white70,
+                  ),
                 ),
+
                 const SizedBox(height: 20),
 
-                // Already have an account? -> Sign In button
+                // SIGN IN BUTTON
                 SizedBox(
                   height: 50,
                   width: width * 0.9,
+
                   child: OutlinedButton(
-                    onPressed: widget.showSignInPage,
+                    onPressed:
+                        widget.showSignInPage,
+
                     style: OutlinedButton.styleFrom(
-                      side: const BorderSide(color: Colors.white),
+                      side: const BorderSide(
+                        color: Colors.white,
+                      ),
+
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30),
+                        borderRadius:
+                            BorderRadius.circular(30),
                       ),
                     ),
+
                     child: const Text(
                       "Already have an account? Sign In",
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.white,
-                        fontWeight: FontWeight.bold,
+                        fontWeight:
+                            FontWeight.bold,
                       ),
                     ),
                   ),
@@ -210,8 +443,9 @@ class _SignUpUIState extends State<SignUpUI> {
   }
 }
 
-// ---------- Reusable TextField (same as SignInUI) ----------
+// ---------------- TEXT FIELD ----------------
 class MyTextfield extends StatelessWidget {
+
   final TextEditingController controller;
   final String hintText;
   final bool obscuretext;
@@ -225,17 +459,31 @@ class MyTextfield extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+
     return TextField(
       controller: controller,
       obscureText: obscuretext,
-      style: const TextStyle(color: Colors.black),
+
+      style: const TextStyle(
+        color: Colors.black,
+      ),
+
       decoration: InputDecoration(
         hintText: hintText,
+
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+
+        contentPadding:
+            const EdgeInsets.symmetric(
+          vertical: 14,
+          horizontal: 16,
+        ),
+
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
+          borderRadius:
+              BorderRadius.circular(30),
+
           borderSide: BorderSide.none,
         ),
       ),
@@ -243,8 +491,9 @@ class MyTextfield extends StatelessWidget {
   }
 }
 
-// ---------- Password TextField (same as SignInUI) ----------
+// ---------------- PASSWORD FIELD ----------------
 class PasswordTextField extends StatefulWidget {
+
   final TextEditingController controller;
   final String hintText;
 
@@ -255,36 +504,57 @@ class PasswordTextField extends StatefulWidget {
   });
 
   @override
-  State<PasswordTextField> createState() => _PasswordTextFieldState();
+  State<PasswordTextField> createState() =>
+      _PasswordTextFieldState();
 }
 
-class _PasswordTextFieldState extends State<PasswordTextField> {
+class _PasswordTextFieldState
+    extends State<PasswordTextField> {
+
   bool _isObscure = true;
 
   @override
   Widget build(BuildContext context) {
+
     return TextField(
       controller: widget.controller,
       obscureText: _isObscure,
-      style: const TextStyle(color: Colors.black),
+
+      style: const TextStyle(
+        color: Colors.black,
+      ),
+
       decoration: InputDecoration(
         hintText: widget.hintText,
+
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+
+        contentPadding:
+            const EdgeInsets.symmetric(
+          vertical: 14,
+          horizontal: 16,
+        ),
+
         suffixIcon: IconButton(
           icon: Icon(
-            _isObscure ? Icons.visibility_off : Icons.visibility,
+            _isObscure
+                ? Icons.visibility_off
+                : Icons.visibility,
             color: Colors.grey,
           ),
+
           onPressed: () {
             setState(() {
               _isObscure = !_isObscure;
             });
           },
         ),
+
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
+          borderRadius:
+              BorderRadius.circular(30),
+
           borderSide: BorderSide.none,
         ),
       ),
@@ -292,8 +562,10 @@ class _PasswordTextFieldState extends State<PasswordTextField> {
   }
 }
 
-// ---------- Confirm Password TextField (style matched to SignInUI) ----------
-class ConfirmPasswordTextField extends StatefulWidget {
+// ---------------- CONFIRM PASSWORD ----------------
+class ConfirmPasswordTextField
+    extends StatefulWidget {
+
   final TextEditingController controller;
   final String hintText;
 
@@ -304,36 +576,57 @@ class ConfirmPasswordTextField extends StatefulWidget {
   });
 
   @override
-  State<ConfirmPasswordTextField> createState() => _ConfirmPasswordTextFieldState();
+  State<ConfirmPasswordTextField> createState() =>
+      _ConfirmPasswordTextFieldState();
 }
 
-class _ConfirmPasswordTextFieldState extends State<ConfirmPasswordTextField> {
+class _ConfirmPasswordTextFieldState
+    extends State<ConfirmPasswordTextField> {
+
   bool _isObscure = true;
 
   @override
   Widget build(BuildContext context) {
+
     return TextField(
       controller: widget.controller,
       obscureText: _isObscure,
-      style: const TextStyle(color: Colors.black),
+
+      style: const TextStyle(
+        color: Colors.black,
+      ),
+
       decoration: InputDecoration(
         hintText: widget.hintText,
+
         filled: true,
         fillColor: Colors.white,
-        contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+
+        contentPadding:
+            const EdgeInsets.symmetric(
+          vertical: 14,
+          horizontal: 16,
+        ),
+
         suffixIcon: IconButton(
           icon: Icon(
-            _isObscure ? Icons.visibility_off : Icons.visibility,
+            _isObscure
+                ? Icons.visibility_off
+                : Icons.visibility,
             color: Colors.grey,
           ),
+
           onPressed: () {
             setState(() {
               _isObscure = !_isObscure;
             });
           },
         ),
+
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(30),
+          borderRadius:
+              BorderRadius.circular(30),
+
           borderSide: BorderSide.none,
         ),
       ),
