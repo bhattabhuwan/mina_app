@@ -1,3 +1,5 @@
+import 'package:mina_app/utils/doctor_utils.dart';
+
 class Appointment {
   final String id;
   final String doctorId;
@@ -21,7 +23,7 @@ class Appointment {
     id: json['id'],
     doctorId: json['doctor_id'],
     doctorName: json['doctor_name'],
-    specialty: json['specialty'],
+    specialty: specialtyOrFallback(json),
     dateTime: DateTime.parse(json['date_time']),
     status: json['status'],
     videoCallUrl: json['video_call_url'],

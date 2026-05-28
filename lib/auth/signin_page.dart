@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mina_app/auth/ApiService.dart';
 import 'package:mina_app/auth/Forgot_pass.dart';
+import 'package:mina_app/auth/role_based_home.dart';
 import 'package:mina_app/provider/user_provider.dart';
-import 'package:mina_app/screen/home_page.dart';
 import 'package:provider/provider.dart';
 
 class SignInUI extends StatefulWidget {
@@ -19,38 +19,32 @@ class _SignInUIState extends State<SignInUI> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _loading = false;
+  bool _obscurePassword = true;
   String? _errorText;
 
-  // ---------------- FRIENDLY ERROR HANDLER ----------------
   String _getFriendlyError(dynamic e) {
     final msg = e.toString().toLowerCase();
-
     if (msg.contains("401") || msg.contains("unauthorized")) {
       return "Invalid email or password.";
     }
-
     if (msg.contains("404")) {
       return "Server not found. Try again later.";
     }
-
     if (msg.contains("network") || msg.contains("socket")) {
       return "No internet connection.";
     }
-
     if (msg.contains("timeout")) {
       return "Request timeout. Please try again.";
     }
-
     return "Something went wrong. Please try again.";
   }
 
-  // ---------------- LOGIN ----------------
   void login() async {
-    final email = _emailController.text.trim();
+    // Accept either email or username for login
+    final credential = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
-    // FIELD VALIDATION
-    if (email.isEmpty || password.isEmpty) {
+    if (credential.isEmpty || password.isEmpty) {
       setState(() {
         _errorText = "Please fill all required fields";
       });
@@ -66,18 +60,23 @@ class _SignInUIState extends State<SignInUI> {
       final api = ApiService();
 
       await api.loginUser(
-        username: email,
+        username: credential,
         password: password,
       );
 
       final userData = await api.getCurrentUser();
 
-      final userProvider =
-          Provider.of<UserProvider>(context, listen: false);
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+
+      // Extract user ID (handle nested response if needed)
+      final userId = userData['id'] ?? userData['data']?['id'] as int?;
 
       await userProvider.updateUser(
         fullName: userData['full_name'] ?? 'User',
         email: userData['email'] ?? '',
+        profileImagePath: userData['profile_image_url'],
+        role: userData['role'] ?? 'patient',
+        userId: userId,
       );
 
       if (!mounted) return;
@@ -89,25 +88,24 @@ class _SignInUIState extends State<SignInUI> {
         ),
       );
 
-      Navigator.pushReplacement(
+      Navigator.pushAndRemoveUntil(
         context,
-        MaterialPageRoute(builder: (context) => HomePage()),
+        MaterialPageRoute(builder: (context) => const RoleBasedHome()),
+        (route) => false,
       );
-
     } catch (e) {
+      // Print full error to console for debugging
+      print("Login error: $e");
       if (!mounted) return;
-
       setState(() {
         _errorText = _getFriendlyError(e);
       });
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_errorText!),
           backgroundColor: Colors.red,
         ),
       );
-
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -115,7 +113,6 @@ class _SignInUIState extends State<SignInUI> {
     }
   }
 
-  // ---------------- FORGOT PASSWORD ----------------
   void _showForgotPasswordDialog() {
     showDialog(
       context: context,
@@ -136,15 +133,12 @@ class _SignInUIState extends State<SignInUI> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-
                 Image.asset(
                   'lib/images/logo.png',
                   height: 150,
                   width: 150,
                 ),
-
                 const SizedBox(height: 20),
-
                 const Text(
                   'MINA',
                   style: TextStyle(
@@ -153,7 +147,6 @@ class _SignInUIState extends State<SignInUI> {
                     color: Colors.white,
                   ),
                 ),
-
                 const Text(
                   'HEALTH APP',
                   style: TextStyle(
@@ -161,14 +154,11 @@ class _SignInUIState extends State<SignInUI> {
                     color: Colors.white70,
                   ),
                 ),
-
                 const SizedBox(height: 40),
-
-                // EMAIL
                 TextField(
                   controller: _emailController,
                   decoration: InputDecoration(
-                    hintText: "Email or Phone",
+                    hintText: "Email or Username",
                     filled: true,
                     fillColor: Colors.white,
                     border: OutlineInputBorder(
@@ -176,26 +166,28 @@ class _SignInUIState extends State<SignInUI> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 16),
-
-                // PASSWORD
                 TextField(
                   controller: _passwordController,
-                  obscureText: true,
+                  obscureText: _obscurePassword,
                   decoration: InputDecoration(
                     hintText: "Password",
                     filled: true,
                     fillColor: Colors.white,
+                    suffixIcon: IconButton(
+                      icon: Icon(
+                        _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                      ),
+                      onPressed: () {
+                        setState(() => _obscurePassword = !_obscurePassword);
+                      },
+                    ),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(30),
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
-                // ERROR TEXT (INLINE)
                 if (_errorText != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 5),
@@ -207,9 +199,7 @@ class _SignInUIState extends State<SignInUI> {
                       ),
                     ),
                   ),
-
                 const SizedBox(height: 10),
-
                 Align(
                   alignment: Alignment.centerRight,
                   child: TextButton(
@@ -220,10 +210,7 @@ class _SignInUIState extends State<SignInUI> {
                     ),
                   ),
                 ),
-
                 const SizedBox(height: 10),
-
-                // LOGIN BUTTON
                 SizedBox(
                   height: 50,
                   width: width * 0.9,
@@ -249,16 +236,12 @@ class _SignInUIState extends State<SignInUI> {
                           ),
                   ),
                 ),
-
                 const SizedBox(height: 20),
-
                 const Text(
                   "or",
                   style: TextStyle(color: Colors.white70),
                 ),
-
                 const SizedBox(height: 20),
-
                 SizedBox(
                   height: 50,
                   width: width * 0.9,

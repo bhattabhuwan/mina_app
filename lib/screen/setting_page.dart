@@ -1,14 +1,12 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mina_app/auth/ApiService.dart';
 import 'package:mina_app/provider/user_provider.dart';
 import 'package:mina_app/screen/privacy_security_page.dart';
 import 'package:mina_app/screen/help_support_page.dart';
-import 'package:mina_app/screen/profile_page.dart';
+import 'package:mina_app/screen/profile_page.dart'; // EditProfilePage is inside profile_page.dart
 import 'package:mina_app/theme/theme_manager.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as path;
+import 'package:mina_app/widgets/profile_avatar.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -51,29 +49,50 @@ class _SettingsPageState extends State<SettingsPage> {
         imageQuality: 80,
       );
       if (pickedFile != null) {
-        final directory = await getApplicationDocumentsDirectory();
-        final fileName = path.basename(pickedFile.path);
-        final savedImage = await File(pickedFile.path)
-            .copy('${directory.path}/$fileName');
+        // Show loading indicator
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Uploading profile picture...')),
+          );
+        }
 
+        final apiService = ApiService();
+        final updatedUser = await apiService.uploadProfilePicture(pickedFile.path);
+        final data = updatedUser['data'] ?? updatedUser;
+        final imageUrl = data['profile_image_url'] as String?;
+        if (imageUrl == null || imageUrl.isEmpty) {
+          throw Exception('Profile image URL missing from server response');
+        }
+
+        if (!mounted) return;
         final userProvider = Provider.of<UserProvider>(context, listen: false);
         await userProvider.updateUser(
-          fullName: userProvider.fullName,
-          email: userProvider.email,
-          profileImagePath: savedImage.path,
+          fullName: data['full_name'] ?? userProvider.fullName,
+          email: data['email'] ?? userProvider.email,
+          profileImagePath: imageUrl,
+          role: data['role'] ?? userProvider.role,
+          userId: data['id'] ?? userProvider.userId,
         );
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Profile picture updated!')),
+            const SnackBar(
+              content: Text('Profile picture updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
           );
         }
       }
     } catch (e) {
       debugPrint("Image pick error: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to pick image')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload profile picture: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -153,36 +172,12 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 GestureDetector(
                   onTap: _showImagePickerDialog,
-                  child: Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      CircleAvatar(
-                        radius: 40,
-                        backgroundColor: Colors.blue.shade300,
-                        backgroundImage: userProvider.profileImagePath != null &&
-                                File(userProvider.profileImagePath!).existsSync()
-                            ? FileImage(File(userProvider.profileImagePath!))
-                            : null,
-                        child: userProvider.profileImagePath == null ||
-                                !File(userProvider.profileImagePath!).existsSync()
-                            ? const Icon(
-                                Icons.person,
-                                size: 40,
-                                color: Colors.white,
-                              )
-                            : null,
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.blue,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(Icons.camera_alt,
-                            color: Colors.white, size: 16),
-                      ),
-                    ],
+                  child: ProfileAvatar(
+                    imagePathOrUrl: userProvider.profileImageUrl,
+                    radius: 40,
+                    iconSize: 40,
+                    backgroundColor: Colors.blue.shade300,
+                    showCameraBadge: true,
                   ),
                 ),
                 const SizedBox(width: 20),
@@ -206,17 +201,16 @@ class _SettingsPageState extends State<SettingsPage> {
                       const SizedBox(height: 10),
                       GestureDetector(
                         onTap: () async {
+                          // ✅ Updated to use the new EditProfilePage (no parameters)
                           await Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (context) => EditProfilePage(
-                                currentName: userProvider.fullName,
-                                currentEmail: userProvider.email,
-                                currentImagePath: userProvider.profileImagePath,
-                              ),
+                              builder: (context) => const EditProfilePage(),
                             ),
                           );
+                          // Reload user data after returning
                           await userProvider.loadUserData();
+                          setState(() {}); // refresh UI
                         },
                         child: Container(
                           padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 14),
@@ -284,7 +278,7 @@ class _SettingsPageState extends State<SettingsPage> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => HelpSupportPage()),
+                MaterialPageRoute(builder: (_) => const HelpSupportPage()),
               );
             },
           ),
@@ -311,7 +305,7 @@ class _SettingsPageState extends State<SettingsPage> {
           const SizedBox(height: 30),
 
           ElevatedButton.icon(
-            icon: const Icon(color: Colors.white, Icons.logout),
+            icon: const Icon(Icons.logout, color: Colors.white),
             label: const Text('Logout', style: TextStyle(color: Colors.white, fontSize: 16)),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color.fromARGB(255, 206, 11, 11),

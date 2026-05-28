@@ -1,32 +1,58 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Existing permissions -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+
+    <!-- Internet -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Required for Android 13+ notifications -->
+    <!-- Video calls -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-feature
+        android:name="android.hardware.camera"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.camera.front"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.microphone"
+        android:required="false" />
+
+    <!-- Foreground service -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+
+    <!-- Activity / step counter -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- Notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Required for exact alarm scheduling (Android 12+) -->
+
+    <!-- Exact alarm scheduling -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <!-- Required for vibration (optional) -->
+
+    <!-- Optional vibration -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- Required for boot completed to reschedule alarms -->
+    <!-- Restart alarms after reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
 
-    <!-- Biometric permissions (fingerprint, face unlock) -->
+    <!-- Biometrics -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <uses-permission android:name="android.permission.USE_FINGERPRINT" />
+
+    <!-- Media access -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
 
     <application
         android:label="mina_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <!-- Main Activity -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -36,65 +62,84 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+
+            <!-- Flutter normal theme -->
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
+
+            <!-- Launcher -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
         </activity>
 
-        <!-- Don't delete the meta-data below. Used by Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <!-- Flutter embedding -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- Receivers for scheduled notifications (flutter_local_notifications) -->
+        <!-- Scheduled notification receiver -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
             android:exported="false" />
+
+        <!-- Reschedule notifications after reboot/update -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:exported="false">
+
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
+
         </receiver>
 
-        <!-- WorkManager background processing (optional, for reliability) -->
+        <!-- File provider -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
+
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
+
         </provider>
 
-        <!-- ✅ Step counter service (required for accurate_step_counter) -->
+        <!-- Step counter foreground service -->
         <service
             android:name="com.rahuLKumar.steplogger.StepLoggerService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="health" />
+
     </application>
 
-    <!-- Required to query activities that can process text -->
+    <!-- Queries -->
     <queries>
+
+        <!-- Text processing -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
         </intent>
-        <!-- For image picker (optional, covers gallery) -->
+
+        <!-- Camera -->
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
         </intent>
+
+        <!-- Gallery -->
         <intent>
             <action android:name="android.intent.action.GET_CONTENT" />
             <data android:mimeType="image/*" />
         </intent>
+
     </queries>
+
 </manifest>

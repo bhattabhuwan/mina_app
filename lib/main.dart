@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:mina_app/auth/role_based_home.dart';
 import 'package:mina_app/theme/theme_manager.dart';
 import 'package:mina_app/provider/user_provider.dart';
-import 'package:mina_app/auth/auth_service.dart';      // adjust import to your AuthPage location
+import 'package:mina_app/auth/auth_service.dart';      
+import 'package:mina_app/auth/ApiService.dart';           
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -27,11 +29,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Load user data once the first frame is built
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<UserProvider>(context, listen: false).loadUserData();
-    });
-
     return Consumer<ThemeManager>(
       builder: (context, themeManager, child) {
         return MaterialApp(
@@ -40,8 +37,51 @@ class MyApp extends StatelessWidget {
           themeMode: themeManager.currentTheme,
           theme: lightTheme,
           darkTheme: darkTheme,
-          home: const AuthPage(),
+          home: const AuthDecision(),   // Decide initial screen
         );
+      },
+    );
+  }
+}
+
+// Widget that decides whether to show AuthPage or RoleBasedHome
+class AuthDecision extends StatefulWidget {
+  const AuthDecision({super.key});
+
+  @override
+  State<AuthDecision> createState() => _AuthDecisionState();
+}
+
+class _AuthDecisionState extends State<AuthDecision> {
+  late Future<bool> _isLoggedInFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _isLoggedInFuture = _checkLoginStatus();
+  }
+
+  Future<bool> _checkLoginStatus() async {
+    final api = ApiService();
+    final isLoggedIn = await api.isLoggedIn(); // returns true if token exists
+    if (isLoggedIn) {
+      // Optionally load user data here or let RoleBasedHome do it
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      await userProvider.loadUserData();
+    }
+    return isLoggedIn;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<bool>(
+      future: _isLoggedInFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+        final isLoggedIn = snapshot.data ?? false;
+        return isLoggedIn ? const RoleBasedHome() : const AuthPage();
       },
     );
   }

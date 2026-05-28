@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:mina_app/auth/signin_page.dart';
-import 'package:mina_app/auth/signup_page.dart' hide SignInUI;
- // import the API service
+import 'signin_page.dart';
+import 'signup_page.dart';
 
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -14,9 +13,7 @@ class _AuthPageState extends State<AuthPage> {
   bool showSignIn = true;
 
   void togglePages() {
-    setState(() {
-      showSignIn = !showSignIn;
-    });
+    setState(() => showSignIn = !showSignIn);
   }
 
   @override

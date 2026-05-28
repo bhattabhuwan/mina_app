@@ -1,13 +1,14 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mina_app/auth/ApiService.dart';
 import 'package:mina_app/provider/user_provider.dart';
+import 'package:mina_app/screen/chat_page.dart';
 import 'package:mina_app/screen/setting_page.dart';
 import 'package:mina_app/screen/exercise_page.dart';
+import 'package:mina_app/screen/video_call_page.dart';
 import 'package:mina_app/theme/theme_manager.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as path;
+import 'package:mina_app/utils/doctor_utils.dart';
+import 'package:mina_app/widgets/profile_avatar.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -89,6 +90,93 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
+  Future<void> _pickProfileImage(ImageSource source) async {
+    try {
+      final pickedFile = await ImagePicker().pickImage(
+        source: source,
+        imageQuality: 80,
+      );
+      if (pickedFile == null) return;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Uploading profile picture...')),
+        );
+      }
+
+      final updatedUser = await _apiService.uploadProfilePicture(pickedFile.path);
+      final data = updatedUser['data'] ?? updatedUser;
+      final imageUrl = data['profile_image_url'] as String?;
+      if (imageUrl == null || imageUrl.isEmpty) {
+        throw Exception('Profile image URL missing from server response');
+      }
+
+      if (!mounted) return;
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      await userProvider.updateUser(
+        fullName: data['full_name'] ?? userProvider.fullName,
+        email: data['email'] ?? userProvider.email,
+        profileImagePath: imageUrl,
+        role: data['role'] ?? userProvider.role,
+        userId: data['id'] ?? userProvider.userId,
+      );
+
+      if (mounted) {
+        setState(() {});
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile picture updated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload profile picture: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showProfileImagePickerDialog() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Take a photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickProfileImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickProfileImage(ImageSource.gallery);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final themeManager = Provider.of<ThemeManager>(context);
@@ -138,17 +226,15 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ],
                   ),
-                  CircleAvatar(
-                    radius: 45,
-                    backgroundColor: Colors.blue.shade300,
-                    backgroundImage: userProvider.profileImagePath != null &&
-                            File(userProvider.profileImagePath!).existsSync()
-                        ? FileImage(File(userProvider.profileImagePath!))
-                        : null,
-                    child: userProvider.profileImagePath == null ||
-                            !File(userProvider.profileImagePath!).existsSync()
-                        ? const Icon(Icons.person, size: 45, color: Colors.white)
-                        : null,
+                  GestureDetector(
+                    onTap: _showProfileImagePickerDialog,
+                    child: ProfileAvatar(
+                      imagePathOrUrl: userProvider.profileImageUrl,
+                      radius: 45,
+                      iconSize: 45,
+                      backgroundColor: Colors.blue.shade300,
+                      showCameraBadge: true,
+                    ),
                   ),
                 ],
               ),
@@ -252,7 +338,7 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-// ===================== Health Score Page (Full Screen – No Dialog Layout Issues) =====================
+// ===================== Health Score Page =====================
 class HealthScorePage extends StatefulWidget {
   final Function(double) onSave;
   const HealthScorePage({super.key, required this.onSave});
@@ -371,51 +457,114 @@ class _HealthScorePageState extends State<HealthScorePage> {
   }
 }
 
-// ===================== EditProfilePage (unchanged) =====================
+// ===================== EditProfilePage (fully integrated with backend) =====================
 class EditProfilePage extends StatefulWidget {
-  final String currentName;
-  final String currentEmail;
-  final String? currentImagePath;
-  const EditProfilePage({super.key, required this.currentName, required this.currentEmail, this.currentImagePath});
+  const EditProfilePage({super.key});
 
   @override
   State<EditProfilePage> createState() => _EditProfilePageState();
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  late TextEditingController nameController;
-  late TextEditingController emailController;
-  String? _imagePath;
-  final ImagePicker _picker = ImagePicker();
+  final ApiService _api = ApiService();
+  final _formKey = GlobalKey<FormState>();
+
+  late TextEditingController _fullNameController;
+  late TextEditingController _emailController;
+  late TextEditingController _phoneController;
+  late TextEditingController _dateOfBirthController;
+  late TextEditingController _genderController;
+  late TextEditingController _addressController;
+  late TextEditingController _emergencyContactController;
+  late TextEditingController _medicalConditionsController;
+  late TextEditingController _allergiesController;
+  late TextEditingController _currentMedicationsController;
+
+  String? _profileImagePath;
+  bool _isLoading = true;
   bool _isSaving = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
-    nameController = TextEditingController(text: widget.currentName);
-    emailController = TextEditingController(text: widget.currentEmail);
-    _imagePath = widget.currentImagePath;
+    _loadUserData();
   }
 
-  @override
-  void dispose() {
-    nameController.dispose();
-    emailController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickImage(ImageSource source) async {
+  Future<void> _loadUserData() async {
+    setState(() => _isLoading = true);
     try {
-      final pickedFile = await _picker.pickImage(source: source, imageQuality: 80);
-      if (pickedFile != null) {
-        final directory = await getApplicationDocumentsDirectory();
-        if (!await directory.exists()) await directory.create();
-        final fileName = path.basename(pickedFile.path);
-        final savedImage = await File(pickedFile.path).copy('${directory.path}/$fileName');
-        setState(() => _imagePath = savedImage.path);
+      final userData = await _api.getCurrentUser();
+      final data = userData['data'] ?? userData;
+
+      _fullNameController = TextEditingController(text: data['full_name'] ?? '');
+      _emailController = TextEditingController(text: data['email'] ?? '');
+      _phoneController = TextEditingController(text: data['phone'] ?? '');
+      _dateOfBirthController = TextEditingController(text: data['date_of_birth']?.split('T')[0] ?? '');
+      _genderController = TextEditingController(text: data['gender'] ?? '');
+      _addressController = TextEditingController(text: data['address'] ?? '');
+      _emergencyContactController = TextEditingController(text: data['emergency_contact'] ?? '');
+      _medicalConditionsController = TextEditingController(text: (data['medical_conditions'] as List?)?.join(', ') ?? '');
+      _allergiesController = TextEditingController(text: (data['allergies'] as List?)?.join(', ') ?? '');
+      _currentMedicationsController = TextEditingController(text: (data['current_medications'] as List?)?.join(', ') ?? '');
+      _profileImagePath = data['profile_image_url'];
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+    try {
+      // Convert date of birth to ISO 8601 datetime
+      String? formattedDate;
+      if (_dateOfBirthController.text.trim().isNotEmpty) {
+        try {
+          final parsed = DateTime.parse(_dateOfBirthController.text.trim());
+          formattedDate = parsed.toIso8601String(); // e.g., "2001-01-04T00:00:00.000"
+        } catch (e) {
+          // invalid date – will send null (field omitted)
+        }
+      }
+
+      final Map<String, dynamic> updatedData = {
+        'full_name': _fullNameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'date_of_birth': formattedDate,
+        'gender': _genderController.text.trim(),
+        'address': _addressController.text.trim(),
+        'emergency_contact': _emergencyContactController.text.trim(),
+        'medical_conditions': _medicalConditionsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+        'allergies': _allergiesController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+        'current_medications': _currentMedicationsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+      };
+      await _api.updateUserProfile(updatedData);
+
+      final userProvider = Provider.of<UserProvider>(context, listen: false);
+      await userProvider.updateUser(
+        fullName: updatedData['full_name'],
+        email: _emailController.text.trim(),
+        profileImagePath: _profileImagePath,
+      );
+      await userProvider.loadUserData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile updated successfully'), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context, true);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to pick image')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to update: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      setState(() => _isSaving = false);
     }
   }
 
@@ -429,8 +578,22 @@ class _EditProfilePageState extends State<EditProfilePage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(leading: const Icon(Icons.camera_alt), title: const Text('Take a photo'), onTap: () { Navigator.pop(context); _pickImage(ImageSource.camera); }),
-              ListTile(leading: const Icon(Icons.photo_library), title: const Text('Choose from gallery'), onTap: () { Navigator.pop(context); _pickImage(ImageSource.gallery); }),
+              ListTile(
+                leading: const Icon(Icons.camera_alt),
+                title: const Text('Take a photo'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _pickImage(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Choose from gallery'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  await _pickImage(ImageSource.gallery);
+                },
+              ),
             ],
           ),
         ),
@@ -438,33 +601,73 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  Future<void> _saveProfile() async {
-    if (nameController.text.trim().isEmpty || emailController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Name and email cannot be empty')));
-      return;
-    }
-    setState(() => _isSaving = true);
+  Future<void> _pickImage(ImageSource source) async {
     try {
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
-      await userProvider.updateUser(
-        fullName: nameController.text.trim(),
-        email: emailController.text.trim(),
-        profileImagePath: _imagePath,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated successfully')));
-        Navigator.pop(context, true);
+      final pickedFile = await ImagePicker().pickImage(source: source, imageQuality: 80);
+      if (pickedFile != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Uploading profile picture...')),
+          );
+        }
+
+        final updatedUser = await _api.uploadProfilePicture(pickedFile.path);
+        final data = updatedUser['data'] ?? updatedUser;
+        final imageUrl = data['profile_image_url'] as String?;
+        if (imageUrl == null || imageUrl.isEmpty) {
+          throw Exception('Profile image URL missing from server response');
+        }
+
+        if (!mounted) return;
+        setState(() => _profileImagePath = imageUrl);
+
+        final userProvider = Provider.of<UserProvider>(context, listen: false);
+        await userProvider.updateUser(
+          fullName: data['full_name'] ?? userProvider.fullName,
+          email: data['email'] ?? userProvider.email,
+          profileImagePath: imageUrl,
+          role: data['role'] ?? userProvider.role,
+          userId: data['id'] ?? userProvider.userId,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile picture updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Failed to save profile')));
-    } finally {
-      setState(() => _isSaving = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to upload profile picture: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Provider.of<ThemeManager>(context).isDarkMode;
+
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Edit Profile')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (_error != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Edit Profile')),
+        body: Center(child: Text('Error: $_error')),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Edit Profile'),
@@ -477,48 +680,105 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            GestureDetector(
-              onTap: _showImagePickerDialog,
-              child: Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  CircleAvatar(
-                    radius: 60,
-                    backgroundColor: Colors.blue.shade300,
-                    backgroundImage: _imagePath != null && File(_imagePath!).existsSync() ? FileImage(File(_imagePath!)) : null,
-                    child: _imagePath == null || !File(_imagePath!).existsSync() ? const Icon(Icons.person, size: 60, color: Colors.white) : null,
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
-                    child: const Icon(Icons.camera_alt, color: Colors.white, size: 20),
-                  ),
-                ],
+      body: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            children: [
+              // Profile picture
+              GestureDetector(
+                onTap: _showImagePickerDialog,
+                child: ProfileAvatar(
+                  imagePathOrUrl: _profileImagePath,
+                  radius: 60,
+                  iconSize: 60,
+                  backgroundColor: Colors.blue.shade300,
+                  showCameraBadge: true,
+                ),
               ),
-            ),
-            const SizedBox(height: 30),
-            TextField(controller: nameController, decoration: InputDecoration(labelText: 'Full Name', prefixIcon: const Icon(Icons.person), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-            const SizedBox(height: 20),
-            TextField(controller: emailController, keyboardType: TextInputType.emailAddress, decoration: InputDecoration(labelText: 'Email', prefixIcon: const Icon(Icons.email), border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)))),
-            const SizedBox(height: 30),
-            ElevatedButton.icon(
-              onPressed: _isSaving ? null : _showImagePickerDialog,
-              icon: const Icon(Icons.photo_camera),
-              label: const Text('Change Profile Picture'),
-              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))),
-            ),
-          ],
+              const SizedBox(height: 30),
+
+              TextFormField(
+                controller: _fullNameController,
+                decoration: const InputDecoration(labelText: 'Full Name', prefixIcon: Icon(Icons.person)),
+                validator: (v) => v == null || v.isEmpty ? 'Required' : null,
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _emailController,
+                decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email)),
+                enabled: false,
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _phoneController,
+                decoration: const InputDecoration(labelText: 'Phone', prefixIcon: Icon(Icons.phone)),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _dateOfBirthController,
+                decoration: const InputDecoration(labelText: 'Date of Birth (YYYY-MM-DD)', prefixIcon: Icon(Icons.cake)),
+                keyboardType: TextInputType.datetime,
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _genderController,
+                decoration: const InputDecoration(labelText: 'Gender', prefixIcon: Icon(Icons.person_outline)),
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _addressController,
+                decoration: const InputDecoration(labelText: 'Address', prefixIcon: Icon(Icons.home)),
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _emergencyContactController,
+                decoration: const InputDecoration(labelText: 'Emergency Contact', prefixIcon: Icon(Icons.emergency)),
+                keyboardType: TextInputType.phone,
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _medicalConditionsController,
+                decoration: const InputDecoration(labelText: 'Medical Conditions (comma separated)', prefixIcon: Icon(Icons.medical_information)),
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _allergiesController,
+                decoration: const InputDecoration(labelText: 'Allergies (comma separated)', prefixIcon: Icon(Icons.coronavirus)),
+              ),
+              const SizedBox(height: 16),
+
+              TextFormField(
+                controller: _currentMedicationsController,
+                decoration: const InputDecoration(labelText: 'Current Medications (comma separated)', prefixIcon: Icon(Icons.medication)),
+              ),
+              const SizedBox(height: 30),
+
+              ElevatedButton.icon(
+                onPressed: _isSaving ? null : _showImagePickerDialog,
+                icon: const Icon(Icons.photo_camera),
+                label: const Text('Change Profile Picture'),
+                style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-// ===================== AppointmentsPage (unchanged) =====================
+// ===================== AppointmentsPage =====================
 class AppointmentsPage extends StatefulWidget {
   const AppointmentsPage({super.key});
 
@@ -530,6 +790,7 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
   final ApiService _api = ApiService();
   List<dynamic> _appointments = [];
   bool _loading = true;
+  bool _startingCall = false;
 
   @override
   void initState() {
@@ -560,9 +821,55 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
     }
   }
 
+  Future<void> _startAppointmentCall(Map<String, dynamic> appointment) async {
+    setState(() => _startingCall = true);
+    try {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VideoCallPage(
+            appointmentId: appointment['id'],
+            title: 'Call with ${appointment['doctor_name'] ?? 'Doctor'}',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Call failed: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _startingCall = false);
+    }
+  }
+
+  void _messageDoctor(Map<String, dynamic> appointment) {
+    final doctorId = appointment['doctor_id'];
+    if (doctorId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Doctor ID not found for this appointment.')),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ChatPage(
+          participantId: doctorId.toString(),
+          participantName: appointment['doctor_name'] ?? 'Doctor',
+          participantRole: 'doctor',
+          appointmentId: appointment['id'],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDarkMode = Provider.of<ThemeManager>(context).isDarkMode;
+    final isDoctor = Provider.of<UserProvider>(context).role.toLowerCase() == 'doctor';
 
     return Scaffold(
       appBar: AppBar(
@@ -593,29 +900,60 @@ class _AppointmentsPageState extends State<AppointmentsPage> {
                   itemCount: _appointments.length,
                   itemBuilder: (context, index) {
                     final apt = _appointments[index];
-                    final dateTime = DateTime.tryParse(apt['date_time'] ?? '');
+                    final dateTime = DateTime.tryParse(apt['scheduled_at'] ?? '');
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.blue.shade100,
-                          child: const Icon(Icons.medical_services, color: Colors.blue),
-                        ),
-                        title: Text(apt['doctor_name'] ?? 'Doctor'),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(apt['specialty'] ?? 'General'),
-                            if (dateTime != null)
-                              Text('${dateTime.toLocal()}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
-                          ],
-                        ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.cancel, color: Colors.red),
-                          onPressed: () => _cancelAppointment(apt['id']),
-                        ),
-                        isThreeLine: true,
+                      child: Column(
+                        children: [
+                          ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: Colors.blue.shade100,
+                              child: const Icon(Icons.medical_services, color: Colors.blue),
+                            ),
+                            title: Text(apt['doctor_name'] ?? 'Doctor'),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(specialtyOrFallback(Map<String, dynamic>.from(apt))),
+                                if (dateTime != null)
+                                  Text(
+                                    '${dateTime.toLocal()}',
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                              ],
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.cancel, color: Colors.red),
+                              onPressed: () => _cancelAppointment(apt['id'].toString()),
+                            ),
+                            isThreeLine: true,
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () => _messageDoctor(apt),
+                                    icon: const Icon(Icons.message, size: 18),
+                                    label: const Text('Message'),
+                                  ),
+                                ),
+                                if (isDoctor) ...[
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed: _startingCall ? null : () => _startAppointmentCall(apt),
+                                      icon: const Icon(Icons.videocam, size: 18),
+                                      label: const Text('Call'),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     );
                   },
