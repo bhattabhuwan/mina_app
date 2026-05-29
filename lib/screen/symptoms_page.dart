@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -20,105 +21,26 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
   final TextEditingController _controller = TextEditingController();
   final List<Map<String, dynamic>> _messages = [];
   final ApiService _apiService = ApiService();
+  final ScrollController _scrollController = ScrollController();
 
   bool _loading = false;
   bool _loadingSymptoms = false;
   List<String> _availableSymptoms = [];
 
-  final Map<String, List<Map<String, dynamic>>> _localConditions = {
-    'cough': [
-      {
-        'condition': 'Common Cold',
-        'confidence': 75.0,
-        'severity': 'mild',
-        'recommendations': [
-          'Rest and stay hydrated',
-          'Use honey or lozenges for sore throat',
-          'Use an over-the-counter cough suppressant if needed',
-          'Consult a doctor if symptoms persist beyond 7 days',
-        ],
-      },
-      {
-        'condition': 'Allergic Rhinitis',
-        'confidence': 40.0,
-        'severity': 'mild',
-        'recommendations': [
-          'Avoid known allergens',
-          'Use antihistamines when appropriate',
-          'Keep windows closed during high pollen seasons',
-        ],
-      },
-    ],
-    'fever': [
-      {
-        'condition': 'Viral Infection',
-        'confidence': 80.0,
-        'severity': 'moderate',
-        'recommendations': [
-          'Rest and stay hydrated',
-          'Take acetaminophen or ibuprofen for fever if safe for you',
-          'Seek help if fever is high or persistent',
-        ],
-      },
-    ],
-    'headache': [
-      {
-        'condition': 'Tension Headache',
-        'confidence': 70.0,
-        'severity': 'mild',
-        'recommendations': [
-          'Rest in a quiet, dark room',
-          'Apply a cold or warm compress',
-          'Stay hydrated',
-        ],
-      },
-    ],
-    'fatigue': [
-      {
-        'condition': 'Sleep Deprivation',
-        'confidence': 65.0,
-        'severity': 'mild',
-        'recommendations': [
-          'Improve sleep hygiene',
-          'Take short rests during the day',
-          'Eat balanced meals and stay hydrated',
-        ],
-      },
-    ],
-    'chest pain': [
-      {
-        'condition': 'Possible Cardiac or Respiratory Concern',
-        'confidence': 60.0,
-        'severity': 'urgent',
-        'recommendations': [
-          'Seek urgent medical care for severe or persistent chest pain',
-          'Call emergency services if pain occurs with shortness of breath, sweating, or fainting',
-        ],
-      },
-    ],
-    'shortness of breath': [
-      {
-        'condition': 'Respiratory Distress',
-        'confidence': 65.0,
-        'severity': 'urgent',
-        'recommendations': [
-          'Avoid exertion and sit upright',
-          'Seek urgent care if breathing difficulty is new, severe, or worsening',
-        ],
-      },
-    ],
-  };
-
   @override
   void initState() {
     super.initState();
     _fetchSymptoms();
-    _addMessage('Welcome\nSelect chips or type multiple symptoms to analyze.', false);
+    _addMessage(
+      'Welcome to AI Symptom Checker\nSelect chips or type your symptoms (e.g., fever, chest pain).',
+      false,
+    );
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -126,6 +48,16 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
     setState(() {
       _messages.add({'text': text, 'isUser': isUser});
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
+
+  void _scrollToBottom() {
+    if (!_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   }
 
   Future<void> _fetchSymptoms() async {
@@ -136,7 +68,8 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
       setState(() {
         _availableSymptoms = List<String>.from(data['symptoms'] ?? []);
       });
-    } catch (_) {
+    } catch (e) {
+      // Fallback to a default list if API fails, but we still try backend analysis later.
       setState(() {
         _availableSymptoms = [
           'cough',
@@ -150,86 +83,19 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
           'shortness of breath',
         ];
       });
-      _addMessage('Using offline symptom list. Some features may be limited.', false);
+      _addMessage('Could not load symptom list from server. Using default list.', false);
     } finally {
       if (mounted) setState(() => _loadingSymptoms = false);
     }
   }
 
+  // Simple symptom parsing: split by commas, semicolons, 'and', 'with', 'plus'
   List<String> _parseSymptoms(String input) {
     final raw = input.trim().toLowerCase();
     if (raw.isEmpty) return [];
 
-    final symptoms = <String>{};
-    final normalizedInput = raw.replaceAll(RegExp(r'\s+'), ' ');
-
-    final knownSymptoms = _availableSymptoms
-        .map((symptom) => symptom.trim().toLowerCase())
-        .where((symptom) => symptom.isNotEmpty)
-        .toList()
-      ..sort((a, b) => b.length.compareTo(a.length));
-
-    for (final symptom in knownSymptoms) {
-      final pattern = RegExp(
-        r'(^|[^a-z])' + RegExp.escape(symptom) + r'([^a-z]|$)',
-        caseSensitive: false,
-      );
-      if (pattern.hasMatch(normalizedInput)) {
-        symptoms.add(symptom);
-      }
-    }
-
-    final splitParts = raw
-        .split(RegExp(r'[,;\n]+|\s+(?:and|with|plus)\s+', caseSensitive: false))
-        .map((part) => part.trim())
-        .where((part) => part.isNotEmpty);
-
-    for (final part in splitParts) {
-      symptoms.add(part);
-    }
-
-    return symptoms.toList();
-  }
-
-  String _getLocalAnalysis(List<String> symptoms) {
-    final matches = <Map<String, dynamic>>[];
-
-    for (final symptom in symptoms) {
-      final lowerSymptom = symptom.toLowerCase();
-      final symptomMatches = _localConditions.entries
-          .where((entry) =>
-              lowerSymptom.contains(entry.key) || entry.key.contains(lowerSymptom))
-          .expand((entry) => entry.value);
-      matches.addAll(symptomMatches);
-    }
-
-    if (matches.isEmpty) {
-      return 'AI Medical Analysis (Offline)\n\n'
-          'No specific conditions matched: ${symptoms.join(', ')}.\n\n'
-          'General tips:\n'
-          '- Rest and stay hydrated\n'
-          '- Monitor your symptoms\n'
-          '- Consult a healthcare professional if symptoms worsen\n\n'
-          'This is not a medical diagnosis.';
-    }
-
-    final buffer = StringBuffer('AI Medical Analysis (Offline)\n\nPossible Conditions:\n');
-    final seen = <String>{};
-    for (final match in matches) {
-      final condition = match['condition']?.toString() ?? 'Unknown';
-      if (!seen.add(condition)) continue;
-      buffer.writeln('- $condition (${match['confidence']}%) - ${match['severity']}');
-      final recommendations = match['recommendations'] as List? ?? [];
-      if (recommendations.isNotEmpty) {
-        buffer.writeln('  Recommendations:');
-        for (final recommendation in recommendations) {
-          buffer.writeln('  - $recommendation');
-        }
-      }
-      buffer.writeln();
-    }
-    buffer.write('This is not a medical diagnosis.');
-    return buffer.toString();
+    final parts = raw.split(RegExp(r'[,;\n]+|\s+(?:and|with|plus)\s+'));
+    return parts.map((p) => p.trim()).where((p) => p.isNotEmpty).toList();
   }
 
   Future<void> _analyzeSymptoms(List<String> symptoms) async {
@@ -239,51 +105,94 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
     setState(() => _loading = true);
 
     try {
-      final data = await _apiService.analyzeSymptoms({'symptoms': symptoms});
+      final request = {'symptoms': symptoms};
+      final data = await _apiService.analyzeSymptoms(request);
+
+      Map<String, dynamic>? wellness;
+      try {
+        wellness = await _apiService.getWellnessAdvice(request);
+      } catch (e) {
+        // Wellness advice is optional; continue without it.
+      }
+
       final predictions = data['predictions'] as List?;
       final validSymptoms = List<String>.from(data['valid_symptoms'] ?? []);
       final unknownSymptoms = List<String>.from(data['unknown_symptoms'] ?? []);
 
       final buffer = StringBuffer('AI Medical Analysis\n\n');
       if (validSymptoms.isNotEmpty) {
-        buffer.writeln('Recognized symptoms: ${validSymptoms.join(', ')}\n');
+        buffer.writeln('✅ Recognized: ${validSymptoms.join(', ')}\n');
       }
       if (unknownSymptoms.isNotEmpty) {
-        buffer.writeln('Not recognized: ${unknownSymptoms.join(', ')}\n');
+        buffer.writeln('⚠️ Not recognized: ${unknownSymptoms.join(', ')}\n');
       }
 
-      if (predictions != null && predictions.isNotEmpty) {
-        buffer.writeln('Possible Conditions:');
-        for (final prediction in predictions) {
-          final condition = prediction['condition'] ?? 'Unknown';
-          final confidence = (prediction['confidence'] ?? 0).toDouble();
-          final severity = prediction['severity'] ?? 'unknown';
-          buffer.writeln('- $condition (${confidence.toStringAsFixed(1)}%) - $severity');
+      if (predictions == null || predictions.isEmpty) {
+        buffer.writeln('No conditions could be identified from the symptoms provided.');
+        buffer.writeln('Please consult a healthcare professional for further evaluation.');
+        _addMessage(buffer.toString(), false);
+        return;
+      }
 
-          final recommendations = prediction['recommendations'] as List?;
-          if (recommendations != null && recommendations.isNotEmpty) {
-            buffer.writeln('  Recommendations:');
-            for (final recommendation in recommendations) {
-              buffer.writeln('  - $recommendation');
-            }
+      buffer.writeln('📋 Possible Conditions:');
+      for (final prediction in predictions) {
+        final condition = prediction['condition'] ?? 'Unknown';
+        final rawConfidence = prediction['confidence'];
+        final confidence = rawConfidence is num
+            ? rawConfidence.toDouble()
+            : double.tryParse('$rawConfidence') ?? 0;
+        final severity = prediction['severity'] ?? 'unknown';
+        buffer.writeln('\n▪ $condition');
+        buffer.writeln('   Confidence: ${confidence.toStringAsFixed(1)}%');
+        buffer.writeln('   Severity: $severity');
+
+        final matchedSymptoms = prediction['matched_symptoms'] as List?;
+        if (matchedSymptoms != null && matchedSymptoms.isNotEmpty) {
+          buffer.writeln('   Matched symptoms: ${matchedSymptoms.join(', ')}');
+        }
+
+        final recommendations = prediction['recommendations'] as List?;
+        if (recommendations != null && recommendations.isNotEmpty) {
+          buffer.writeln('   💡 Recommendations:');
+          for (final rec in recommendations) {
+            buffer.writeln('      - $rec');
           }
         }
-        buffer.writeln();
-        buffer.write(data['disclaimer'] ??
-            'This is not a medical diagnosis. Always consult a healthcare professional.');
-        _addMessage(buffer.toString(), false);
-      } else {
-        _addMessage(_getLocalAnalysis(symptoms), false);
       }
+
+      if (wellness != null) {
+        buffer.writeln('\n✨ Wellness Advice:');
+        final primary = wellness['primary_condition']?.toString();
+        if (primary != null && primary.isNotEmpty) {
+          buffer.writeln('   Primary concern: $primary');
+        }
+        final generalAdvice = wellness['general_advice'] as List?;
+        if (generalAdvice != null && generalAdvice.isNotEmpty) {
+          buffer.writeln('   🧘 General advice:');
+          for (final adv in generalAdvice) {
+            buffer.writeln('      - $adv');
+          }
+        }
+        final seekHelp = wellness['when_to_seek_help'] as List?;
+        if (seekHelp != null && seekHelp.isNotEmpty) {
+          buffer.writeln('   🚨 Seek medical help if:');
+          for (final item in seekHelp) {
+            buffer.writeln('      - $item');
+          }
+        }
+      }
+
+      buffer.writeln('\n---');
+      buffer.writeln(data['disclaimer'] ??
+          '⚠️ This is an AI-based suggestion, not a medical diagnosis. Always consult a healthcare professional.');
+
+      _addMessage(buffer.toString(), false);
     } catch (e) {
-      final errorMsg = e.toString();
-      if (errorMsg.contains('unordered_map::at') ||
-          errorMsg.contains('Unknown') ||
-          errorMsg.contains('not recognized')) {
-        _addMessage(_getLocalAnalysis(symptoms), false);
-      } else {
-        _addMessage('Analysis failed: $errorMsg', false);
-      }
+      // Show the actual error so the user knows what went wrong.
+      _addMessage(
+        '❌ Failed to analyze symptoms.\n\nError: $e\n\nPlease check your internet connection and try again.',
+        false,
+      );
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -321,7 +230,7 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
         final message = data is Map
             ? data['message'] ?? data['result'] ?? data['file_url'] ?? 'Upload successful'
             : data.toString();
-        _addMessage('Document Upload Result\n\n$message', false);
+        _addMessage('📄 Document Upload Result\n\n$message', false);
       } else {
         _addMessage('Upload failed (${response.statusCode})', false);
       }
@@ -334,7 +243,10 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
 
   void _send() {
     final symptoms = _parseSymptoms(_controller.text);
-    if (symptoms.isEmpty) return;
+    if (symptoms.isEmpty) {
+      _addMessage('Please enter at least one symptom (e.g., fever, cough).', false);
+      return;
+    }
     _controller.clear();
     _analyzeSymptoms(symptoms);
   }
@@ -345,7 +257,7 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
 
     return Scaffold(
       backgroundColor: isDark ? Colors.black : Colors.blue.shade50,
-      appBar: AppBar(title: const Text('Symptoms Checker')),
+      appBar: AppBar(title: const Text('AI Symptom Checker')),
       body: Column(
         children: [
           if (_loadingSymptoms)
@@ -368,6 +280,7 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
             ),
           Expanded(
             child: ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.all(10),
               itemCount: _messages.length,
               itemBuilder: (context, index) {
@@ -385,7 +298,7 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
                       color: isUser ? Colors.blue : Colors.white,
                       borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
+                    child: SelectableText(
                       message['text'] ?? '',
                       style: TextStyle(color: isUser ? Colors.white : Colors.black87),
                     ),
@@ -410,7 +323,7 @@ class _SymptomsCheckerPageState extends State<SymptomsCheckerPage> {
                       minLines: 1,
                       maxLines: 3,
                       decoration: const InputDecoration(
-                        hintText: 'Enter symptoms, e.g. fever, cough',
+                        hintText: 'Enter symptoms, e.g. fever, chest pain',
                         border: OutlineInputBorder(),
                       ),
                       onSubmitted: (_) => _send(),
